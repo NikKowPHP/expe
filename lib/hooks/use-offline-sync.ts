@@ -35,6 +35,58 @@ export function useOfflineSync() {
         const userId = user.id;
 
         try {
+            // 0. Sync categories first (needed for expenses)
+            const { data: remoteCategories, error: categoriesError } = await supabase
+                .from('categories')
+                .select('*')
+                .eq('user_id', userId);
+
+            if (remoteCategories && !categoriesError) {
+                for (const remoteCategory of remoteCategories) {
+                    await db.categories.put({
+                        ...remoteCategory,
+                        sync_status: 'synced',
+                    });
+                }
+            }
+
+            // 0b. Push pending category changes
+            const pendingCategories = await db.categories.where('sync_status').equals('pending').toArray();
+            
+            for (const category of pendingCategories) {
+                try {
+                    if (category.is_default) {
+                        // Update default category
+                        const { error } = await supabase.from('categories').update({
+                            name: category.name,
+                            icon: category.icon,
+                            color: category.color,
+                        }).eq('id', category.id).eq('user_id', userId);
+
+                        if (!error) {
+                            await db.categories.update(category.id, { sync_status: 'synced' });
+                        }
+                    } else {
+                        // Upsert custom category
+                        const { error } = await supabase.from('categories').upsert({
+                            id: category.id,
+                            user_id: category.user_id,
+                            name: category.name,
+                            icon: category.icon,
+                            type: category.type,
+                            color: category.color,
+                            is_default: category.is_default,
+                        });
+
+                        if (!error) {
+                            await db.categories.update(category.id, { sync_status: 'synced' });
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to sync category:', category.id, error);
+                }
+            }
+
             // 1. Push pending expenses
             const pendingExpenses = await db.expenses.where('sync_status').equals('pending').toArray();
 

@@ -33,6 +33,30 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
+-- Function to seed default categories for new users
+create or replace function public.seed_user_categories()
+returns trigger as $$
+begin
+  insert into public.categories (user_id, name, icon, type, color, is_default)
+  values
+    (new.id, 'Food', 'coffee', 'expense', 'bg-orange-100 text-orange-600', true),
+    (new.id, 'Transport', 'bus', 'expense', 'bg-blue-100 text-blue-600', true),
+    (new.id, 'Shopping', 'shopping-cart', 'expense', 'bg-purple-100 text-purple-600', true),
+    (new.id, 'Housing', 'home', 'expense', 'bg-green-100 text-green-600', true),
+    (new.id, 'Utilities', 'zap', 'expense', 'bg-yellow-100 text-yellow-600', true),
+    (new.id, 'Health', 'heart', 'expense', 'bg-red-100 text-red-600', true),
+    (new.id, 'Work', 'briefcase', 'expense', 'bg-slate-100 text-slate-600', true),
+    (new.id, 'Other', 'more-horizontal', 'expense', 'bg-gray-100 text-gray-600', true);
+  
+  return new;
+end;
+$$ language plpgsql security definer;
+
+-- Trigger to seed categories after user profile creation
+create trigger on_user_profile_created
+  after insert on public.profiles
+  for each row execute procedure public.seed_user_categories();
+
 -- CATEGORIES
 create table public.categories (
   id uuid default uuid_generate_v4() primary key,

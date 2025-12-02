@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { useTheme } from 'next-themes';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
+import { CategoryManager } from '@/components/features/categories/CategoryManager';
 
 export default function SettingsPage() {
     const { theme, setTheme } = useTheme();
@@ -249,6 +250,15 @@ export default function SettingsPage() {
                         </Button>
                     </div>
                 </div>
+            </SettingSection>
+
+            {/* Category Management */}
+            <SettingSection
+                icon={Database}
+                title="Categories"
+                description="Manage your expense categories"
+            >
+                <CategoryManager />
             </SettingSection>
 
             {/* About */}
