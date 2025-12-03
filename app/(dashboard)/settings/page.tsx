@@ -10,6 +10,7 @@ import { useTheme } from 'next-themes';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { CategoryManager } from '@/components/features/categories/CategoryManager';
+import { BudgetManager } from '@/components/features/budgets/BudgetManager';
 
 export default function SettingsPage() {
     const { theme, setTheme } = useTheme();
@@ -259,6 +260,15 @@ export default function SettingsPage() {
                 description="Manage your expense categories"
             >
                 <CategoryManager />
+            </SettingSection>
+
+            {/* Budget Management */}
+            <SettingSection
+                icon={DollarSign}
+                title="Budgets"
+                description="Set monthly spending limits for categories"
+            >
+                <BudgetManager />
             </SettingSection>
 
             {/* About */}

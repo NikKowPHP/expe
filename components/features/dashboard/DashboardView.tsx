@@ -3,8 +3,11 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db/db';
 import { format } from 'date-fns';
-import { ArrowUpRight, ArrowDownLeft, Wallet } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, Wallet, TrendingUp } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useBudgets } from '@/lib/hooks/use-budgets';
+import { cn } from '@/lib/utils';
+import Link from 'next/link';
 
 export function DashboardView() {
     const expenses = useLiveQuery(
@@ -43,6 +46,9 @@ export function DashboardView() {
                 </div>
             </motion.div>
 
+            {/* Budget Progress */}
+            <BudgetProgressSection />
+
             {/* Recent Transactions */}
             <div>
                 <h2 className="text-xl font-bold mb-4">Recent Activity</h2>
@@ -78,5 +84,77 @@ export function DashboardView() {
                 </div>
             </div>
         </div>
+    );
+}
+
+function BudgetProgressSection() {
+    const { budgetStatuses } = useBudgets();
+    
+    // Show top 3 budgets only
+    const topBudgets = budgetStatuses.slice(0, 3);
+    
+    if (topBudgets.length === 0) return null;
+    
+    const getProgressColor = (percentUsed: number) => {
+        if (percentUsed >= 100) return 'bg-red-500';
+        if (percentUsed >= 90) return 'bg-red-400';
+        if (percentUsed >= 75) return 'bg-yellow-500';
+        return 'bg-green-500';
+    };
+    
+    const getTextColor = (percentUsed: number) => {
+        if (percentUsed >= 100) return 'text-red-600';
+        if (percentUsed >= 90) return 'text-red-500';
+        if (percentUsed >= 75) return 'text-yellow-600';
+        return 'text-green-600';
+    };
+    
+    return (
+        <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="space-y-4"
+        >
+            <div className="flex items-center justify-between">
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                    <TrendingUp className="w-5 h-5" />
+                    Budget Progress
+                </h2>
+                <Link href="/settings" className="text-sm text-primary hover:underline">
+                    View All
+                </Link>
+            </div>
+            
+            <div className="space-y-3">
+                {topBudgets.map((budget) => (
+                    <div key={budget.budgetId} className="p-4 bg-card rounded-2xl border border-border">
+                        <div className="flex justify-between items-center mb-2">
+                            <span className="font-medium text-sm">{budget.categoryName}</span>
+                            <span className={cn('text-xs font-bold', getTextColor(budget.percentUsed))}>
+                                {budget.percentUsed.toFixed(0)}%
+                            </span>
+                        </div>
+                        <div className="space-y-1">
+                            <div className="flex justify-between text-xs text-muted-foreground">
+                                <span>${budget.spent.toFixed(2)} spent</span>
+                                <span>${budget.budgetAmount.toFixed(2)} budget</span>
+                            </div>
+                            <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                                <div
+                                    className={cn('h-full transition-all', getProgressColor(budget.percentUsed))}
+                                    style={{ width: `${Math.min(budget.percentUsed, 100)}%` }}
+                                />
+                            </div>
+                            {budget.remaining < 0 && (
+                                <p className="text-xs font-medium text-red-600">
+                                    Over by ${Math.abs(budget.remaining).toFixed(2)}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </motion.div>
     );
 }

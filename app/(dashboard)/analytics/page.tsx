@@ -3,18 +3,24 @@
 import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db/db';
-import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip } from 'recharts';
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
+import { useBudgets } from '@/lib/hooks/use-budgets';
+import { AlertCircle } from 'lucide-react';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
 export default function AnalyticsPage() {
     const expenses = useLiveQuery(() => db.expenses.toArray());
+    const { budgetStatuses } = useBudgets();
     const [insight, setInsight] = useState('');
     const [loadingInsight, setLoadingInsight] = useState(false);
 
     if (!expenses) return <div className="p-6">Loading...</div>;
+
+    // Check for exceeded budgets
+    const exceededBudgets = budgetStatuses.filter(b => b.remaining < 0);
 
     // Group by category
     const byCategory = expenses.reduce((acc, curr) => {
@@ -58,6 +64,51 @@ export default function AnalyticsPage() {
                 >
                     <h3 className="font-bold mb-2">AI Insight</h3>
                     <p>{insight}</p>
+                </motion.div>
+            )}
+
+            {/* Budget Exceeded Warning */}
+            {exceededBudgets.length > 0 && (
+                <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-red-50 dark:bg-red-950 p-4 rounded-xl text-red-800 dark:text-red-200 border border-red-200 dark:border-red-800 flex items-start gap-3"
+                >
+                    <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                    <div>
+                        <h3 className="font-bold mb-1">Budget Alert</h3>
+                        <p>
+                            You've exceeded {exceededBudgets.length} budget{exceededBudgets.length > 1 ? 's' : ''} this month:
+                            {' '}{exceededBudgets.map(b => b.categoryName).join(', ')}
+                        </p>
+                    </div>
+                </motion.div>
+            )}
+
+            {/* Budget vs Actual Chart */}
+            {budgetStatuses.length > 0 && (
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="bg-card p-6 rounded-3xl shadow-sm border border-border"
+                >
+                    <h2 className="text-lg font-semibold mb-4">Budget vs Actual</h2>
+                    <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={budgetStatuses.map(b => ({
+                                name: b.categoryName,
+                                Budget: b.budgetAmount,
+                                Actual: b.spent,
+                            }))}>
+                                <XAxis dataKey="name" />
+                                <YAxis />
+                                <Tooltip />
+                                <Legend />
+                                <Bar dataKey="Budget" fill="#94a3b8" radius={[4, 4, 0, 0]} />
+                                <Bar dataKey="Actual" fill="#8884d8" radius={[4, 4, 0, 0]} />
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
                 </motion.div>
             )}
 

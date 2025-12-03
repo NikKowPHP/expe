@@ -128,6 +128,43 @@ export function useOfflineSync() {
                 }
             }
 
+            // 3. Sync budgets
+            const { data: remoteBudgets, error: budgetsError } = await supabase
+                .from('budgets')
+                .select('*')
+                .eq('user_id', userId);
+
+            if (remoteBudgets && !budgetsError) {
+                for (const remoteBudget of remoteBudgets) {
+                    await db.budgets.put({
+                        ...remoteBudget,
+                        sync_status: 'synced',
+                    });
+                }
+            }
+
+            // 3b. Push pending budget changes
+            const pendingBudgets = await db.budgets.where('sync_status').equals('pending').toArray();
+            
+            for (const budget of pendingBudgets) {
+                try {
+                    const { error } = await supabase.from('budgets').upsert({
+                        id: budget.id,
+                        user_id: budget.user_id,
+                        category_id: budget.category_id,
+                        amount: budget.amount,
+                        month: budget.month,
+                        year: budget.year,
+                    });
+
+                    if (!error) {
+                        await db.budgets.update(budget.id, { sync_status: 'synced' });
+                    }
+                } catch (error) {
+                    console.error('Failed to sync budget:', budget.id, error);
+                }
+            }
+
         } catch (error) {
             console.error('Sync failed:', error);
         } finally {

@@ -23,15 +23,28 @@ export interface Category {
     sync_status: 'synced' | 'pending' | 'error';
 }
 
+export interface Budget {
+    id: string;
+    user_id: string;
+    category_id: string;
+    amount: number;
+    month: number; // 1-12
+    year: number;
+    created_at: string;
+    sync_status: 'synced' | 'pending' | 'error';
+}
+
 export class ExpenseDatabase extends Dexie {
     expenses!: Table<Expense>;
     categories!: Table<Category>;
+    budgets!: Table<Budget>;
 
     constructor() {
         super('ExpenseTrackerDB');
-        this.version(1).stores({
+        this.version(3).stores({
             expenses: 'id, user_id, category_id, date, sync_status', // id is primary key
-            categories: 'id, user_id, type, sync_status'
+            categories: 'id, user_id, type, sync_status',
+            budgets: 'id, user_id, category_id, [month+year], sync_status'
         });
     }
 }
