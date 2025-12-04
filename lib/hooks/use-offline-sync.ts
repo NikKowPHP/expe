@@ -33,6 +33,8 @@ export function useOfflineSync() {
             return;
         }
         const userId = user.id;
+        
+        console.log('[SYNC] Starting sync for user:', userId);
 
         try {
             // --- 0. Sync Categories ---
@@ -43,43 +45,84 @@ export function useOfflineSync() {
                 .eq('user_id', userId);
 
             if (remoteCategories && !categoriesError) {
-                for (const remoteCategory of remoteCategories) {
+                for (const remoteCat of remoteCategories) {
                     await db.categories.put({
-                        ...remoteCategory,
+                        ...remoteCat,
                         sync_status: 'synced',
                     });
                 }
             }
 
-            // Push pending
+            // Push pending categories
             const pendingCategories = await db.categories.where('sync_status').equals('pending').toArray();
             for (const category of pendingCategories) {
                 try {
-                    if (category.is_default) {
-                        const { error } = await supabase.from('categories').update({
-                            name: category.name,
-                            icon: category.icon,
-                            color: category.color,
-                        }).eq('id', category.id).eq('user_id', userId);
-                        if (!error) await db.categories.update(category.id, { sync_status: 'synced' });
-                    } else {
-                        const { error } = await supabase.from('categories').upsert({
-                            id: category.id,
-                            user_id: category.user_id,
-                            name: category.name,
-                            icon: category.icon,
-                            type: category.type,
-                            color: category.color,
-                            is_default: category.is_default,
-                        });
-                        if (!error) await db.categories.update(category.id, { sync_status: 'synced' });
-                    }
+                    const { error } = await supabase.from('categories').upsert({
+                        id: category.id,
+                        user_id: category.user_id,
+                        name: category.name,
+                        icon: category.icon,
+                        type: category.type,
+                        color: category.color,
+                        is_default: category.is_default,
+                    });
+                    if (!error) await db.categories.update(category.id, { sync_status: 'synced' });
                 } catch (error) {
                     console.error('Failed to sync category:', category.id, error);
                 }
             }
 
-            // --- 1. Sync Expenses (Robust Sync with Soft Deletes) ---
+            // --- 1. Sync Accounts FIRST (before expenses need them) ---
+            console.log('[SYNC] Syncing accounts...');
+            const { data: remoteAccounts, error: accountsError } = await supabase
+                .from('accounts')
+                .select('*')
+                .eq('user_id', userId);
+
+            if (accountsError) {
+                console.error('[SYNC] Error fetching remote accounts:', accountsError);
+            }
+
+            if (remoteAccounts && !accountsError) {
+                console.log('[SYNC] Fetched', remoteAccounts.length, 'remote accounts');
+                for (const remoteAccount of remoteAccounts) {
+                    await db.accounts.put({
+                        ...remoteAccount,
+                        sync_status: 'synced',
+                    });
+                }
+            }
+
+            // Push pending accounts
+            const pendingAccounts = await db.accounts.where('sync_status').equals('pending').toArray();
+            console.log('[SYNC] Pushing', pendingAccounts.length, 'pending accounts');
+            
+            for (const account of pendingAccounts) {
+                try {
+                    const { error } = await supabase.from('accounts').upsert({
+                        id: account.id,
+                        user_id: account.user_id,
+                        name: account.name,
+                        type: account.type,
+                        balance: account.balance,
+                        currency: account.currency,
+                        created_at: account.created_at,
+                        updated_at: account.updated_at,
+                    });
+
+                    if (error) {
+                        console.error('[SYNC] Error pushing account:', account.id, error);
+                    } else {
+                        console.log('[SYNC] Successfully pushed account:', account.name);
+                        await db.accounts.update(account.id, { sync_status: 'synced' });
+                    }
+                } catch (error) {
+                    console.error('Failed to sync account:', account.id, error);
+                }
+            }
+
+            // --- 2. Sync Expenses (AFTER accounts) ---
+            console.log('[SYNC] Syncing expenses...');
             
             // Push pending
             const pendingExpenses = await db.expenses.where('sync_status').equals('pending').toArray();
@@ -87,6 +130,7 @@ export function useOfflineSync() {
                 const { error } = await supabase.from('expenses').upsert({
                     id: expense.id,
                     user_id: expense.user_id,
+                    account_id: expense.account_id, // Add account_id
                     category_id: expense.category_id,
                     amount: expense.amount,
                     note: expense.note,
@@ -222,8 +266,15 @@ export function useOfflineSync() {
                 }
             }
 
+            // (Accounts now synced above before expenses)
+
+            // Process recurring expenses (generate new ones if due)
+            await processRecurringExpenses(userId);
+            
+            console.log('[SYNC] Sync completed successfully');
+
         } catch (error) {
-            console.error('Sync failed:', error);
+            console.error('[SYNC] Sync failed:', error);
         } finally {
             setIsSyncing(false);
         }

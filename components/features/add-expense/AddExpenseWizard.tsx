@@ -14,6 +14,8 @@ export function AddExpenseWizard() {
     const router = useRouter();
     const [step, setStep] = useState(1);
     const [amount, setAmount] = useState('');
+    const [transactionType, setTransactionType] = useState<'expense' | 'income'>('expense');
+    const [accountId, setAccountId] = useState<string>(''); // Default to empty, will select default account
     const [categoryId, setCategoryId] = useState('');
     const [note, setNote] = useState('');
     const [date, setDate] = useState(new Date());
@@ -26,6 +28,11 @@ export function AddExpenseWizard() {
             const { data: { user } } = await supabase.auth.getUser();
             if (user) {
                 setUserId(user.id);
+                // Fetch default account (Cash)
+                const defaultAccount = await db.accounts.where({ user_id: user.id, name: 'Cash' }).first();
+                if (defaultAccount) {
+                    setAccountId(defaultAccount.id);
+                }
             } else {
                 // If no user, use a temporary ID (for demo purposes)
                 setUserId('anonymous');
@@ -34,14 +41,75 @@ export function AddExpenseWizard() {
         getUser();
     }, []);
 
-    const handleAmountSubmit = (value: string) => {
+    const handleAmountSubmit = (value: string, type: 'expense' | 'income', accId: string) => {
         setAmount(value);
+        setTransactionType(type);
+        setAccountId(accId);
         setStep(2);
     };
 
     const handleCategorySubmit = (id: string) => {
         setCategoryId(id);
         setStep(3);
+    };
+
+    const handleScanReceipt = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        // Show loading state (could add a global loading state or pass to StepAmount)
+        // For now, let's just log
+        console.log('Scanning receipt...');
+
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+            const base64 = reader.result as string;
+            
+            try {
+                // Fetch categories for AI context
+                const categories = await db.categories.toArray();
+
+                const res = await fetch('/api/ai/scan-receipt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ image: base64, categories }),
+                });
+
+                const data = await res.json();
+                
+                if (data.amount) setAmount(data.amount.toString());
+                if (data.date) setDate(new Date(data.date));
+                if (data.note) setNote(data.note);
+                if (data.category_id) setCategoryId(data.category_id);
+
+                // If we got everything, maybe jump to details?
+                // Or just fill the amount and let user verify.
+                // Let's fill amount and move to next step if valid
+                if (data.amount) {
+                    setStep(2); // Move to Category
+                    // If category is also found, maybe move to Details?
+                    // But StepCategory expects user input. 
+                    // Let's just set the state. The user will see the amount pre-filled if they go back?
+                    // Actually, StepAmount is currently active. If we update amount, it should reflect.
+                    // But we want to auto-advance if successful.
+                    
+                    // Better UX:
+                    // 1. Upload
+                    // 2. Show spinner
+                    // 3. Populate fields
+                    // 4. If category found, skip to Details?
+                    if (data.category_id) {
+                        setStep(3);
+                    } else {
+                        setStep(2);
+                    }
+                }
+            } catch (error) {
+                console.error('Scan failed', error);
+                alert('Failed to scan receipt');
+            }
+        };
+        reader.readAsDataURL(file);
     };
 
     const handleDetailsSubmit = async (finalNote: string, finalDate: Date, isRecurring: boolean, frequency: 'daily' | 'weekly' | 'monthly' | 'yearly') => {
@@ -58,6 +126,7 @@ export function AddExpenseWizard() {
             await db.expenses.add({
                 id: uuidv4(),
                 user_id: userId,
+                account_id: accountId,
                 category_id: categoryId,
                 amount: parseFloat(amount),
                 note: finalNote,
@@ -102,10 +171,15 @@ export function AddExpenseWizard() {
         <div className="h-full flex flex-col">
             <AnimatePresence mode="wait">
                 {step === 1 && (
-                    <StepAmount key="step1" onNext={handleAmountSubmit} />
+                    <StepAmount key="step1" onNext={handleAmountSubmit} onScan={handleScanReceipt} />
                 )}
                 {step === 2 && (
-                    <StepCategory key="step2" onNext={handleCategorySubmit} onBack={() => setStep(1)} />
+                    <StepCategory 
+                        key="step2" 
+                        onNext={handleCategorySubmit} 
+                        onBack={() => setStep(1)} 
+                        type={transactionType}
+                    />
                 )}
                 {step === 3 && (
                     <StepDetails key="step3" onSubmit={handleDetailsSubmit} onBack={() => setStep(2)} />

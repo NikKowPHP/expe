@@ -12,7 +12,8 @@ import { useRouter } from 'next/navigation';
 import { CategoryManager } from '@/components/features/categories/CategoryManager';
 import { BudgetManager } from '@/components/features/budgets/BudgetManager';
 import { RecurringExpensesList } from '@/components/features/expenses/RecurringExpensesList';
-import { RefreshCw } from 'lucide-react';
+import { AccountManager } from '@/components/features/accounts/AccountManager';
+import { RefreshCw, Wallet } from 'lucide-react';
 
 export default function SettingsPage() {
     const { theme, setTheme } = useTheme();
@@ -273,6 +274,15 @@ export default function SettingsPage() {
                 description="Manage your expense categories"
             >
                 <CategoryManager />
+            </SettingSection>
+
+            {/* Account Management */}
+            <SettingSection
+                icon={Wallet}
+                title="Accounts & Wallets"
+                description="Manage your cash, bank accounts, and credit cards"
+            >
+                <AccountManager />
             </SettingSection>
 
             {/* Budget Management */}

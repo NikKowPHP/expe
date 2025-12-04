@@ -11,16 +11,39 @@ import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { formatCurrency, getCurrency } from '@/lib/utils/currency';
 
+import { AccountCard } from '@/components/features/accounts/AccountCard';
+
 export function DashboardView() {
     const expenses = useLiveQuery(
         () => db.expenses.orderBy('date').filter(e => !e.deleted_at).reverse().limit(10).toArray()
     );
     
     const categories = useLiveQuery(() => db.categories.toArray());
+    const accounts = useLiveQuery(() => db.accounts.toArray());
 
-    const totalSpent = useLiveQuery(async () => {
-        const all = await db.expenses.filter(e => !e.deleted_at).toArray();
-        return all.reduce((sum, e) => sum + e.amount, 0);
+    const totalBalance = useLiveQuery(async () => {
+        const allAccounts = await db.accounts.toArray();
+        const allExpenses = await db.expenses.filter(e => !e.deleted_at).toArray();
+        const allCategories = await db.categories.toArray();
+
+        if (!allAccounts || !allExpenses || !allCategories) return 0;
+
+        let balance = 0;
+        
+        // Initial balances
+        balance += allAccounts.reduce((sum, acc) => sum + (acc.balance || 0), 0);
+
+        // Transactions
+        for (const expense of allExpenses) {
+            const category = allCategories.find(c => c.id === expense.category_id);
+            if (category?.type === 'income') {
+                balance += expense.amount;
+            } else {
+                balance -= expense.amount;
+            }
+        }
+        
+        return balance;
     });
     
     const getCategoryById = (id: string) => {
@@ -31,30 +54,45 @@ export function DashboardView() {
 
     return (
         <div className="p-6 space-y-8">
-            {/* Header / Total Balance */}
+            {/* Header / Net Worth */}
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="bg-primary text-primary-foreground rounded-3xl p-6 shadow-xl"
             >
                 <div className="flex items-center justify-between mb-4">
-                    <span className="text-sm font-medium opacity-80">Total Spent</span>
+                    <span className="text-sm font-medium opacity-80">Net Worth</span>
                     <Wallet className="w-5 h-5 opacity-80" />
                 </div>
                 <h1 className="text-4xl font-bold">
-                    {formatCurrency(totalSpent || 0, currency)}
+                    {formatCurrency(totalBalance || 0, currency)}
                 </h1>
                 <div className="mt-4 flex space-x-4">
                     <div className="flex items-center text-sm bg-white/10 px-3 py-1 rounded-full">
-                        <ArrowUpRight className="w-4 h-4 mr-1 text-red-300" />
-                        <span>+15%</span>
+                        <ArrowUpRight className="w-4 h-4 mr-1 text-green-300" />
+                        <span>Income</span>
                     </div>
                     <div className="flex items-center text-sm bg-white/10 px-3 py-1 rounded-full">
-                        <ArrowDownLeft className="w-4 h-4 mr-1 text-green-300" />
-                        <span>-5%</span>
+                        <ArrowDownLeft className="w-4 h-4 mr-1 text-red-300" />
+                        <span>Expense</span>
                     </div>
                 </div>
             </motion.div>
+
+            {/* Accounts */}
+            <div>
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xl font-bold">Accounts</h2>
+                    <Link href="/settings" className="text-sm text-primary hover:underline">
+                        Manage
+                    </Link>
+                </div>
+                <div className="grid gap-3">
+                    {accounts?.map(account => (
+                        <AccountCard key={account.id} account={account} />
+                    ))}
+                </div>
+            </div>
 
             {/* Budget Progress */}
             <BudgetProgressSection />
