@@ -3,7 +3,9 @@
 import { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, Expense } from '@/lib/db/db';
-import { Search, Filter, X, Trash2, Calendar } from 'lucide-react';
+import { useExpenseMutations } from '@/lib/hooks/use-expense-mutations';
+import { getIconComponent } from '@/lib/utils/icons';
+import { Search, Filter, X, Trash2, Calendar, DollarSign } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
@@ -11,6 +13,7 @@ import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths
 export default function HistoryPage() {
     const expenses = useLiveQuery(() => db.expenses.orderBy('date').reverse().toArray());
     const categories = useLiveQuery(() => db.categories.toArray());
+    const { deleteExpense } = useExpenseMutations();
 
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -65,7 +68,7 @@ export default function HistoryPage() {
 
     const handleDelete = async (id: string) => {
         if (confirm('Delete this expense?')) {
-            await db.expenses.delete(id);
+            await deleteExpense(id);
         }
     };
 
@@ -173,6 +176,8 @@ export default function HistoryPage() {
                     ) : (
                         filteredExpenses.map((expense, index) => {
                             const category = getCategoryById(expense.category_id);
+                            const CategoryIcon = category ? getIconComponent(category.icon) : DollarSign;
+                            
                             return (
                                 <motion.div
                                     key={expense.id}
@@ -182,8 +187,8 @@ export default function HistoryPage() {
                                     transition={{ delay: index * 0.05 }}
                                     className="flex items-center gap-4 p-4 bg-card rounded-2xl border border-border"
                                 >
-                                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center text-2xl">
-                                        {category?.icon || '💰'}
+                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${category?.color || 'bg-primary/10'}`}>
+                                        <CategoryIcon className="w-6 h-6" />
                                     </div>
                                     <div className="flex-1 min-w-0">
                                         <p className="font-semibold">{category?.name || 'Unknown'}</p>

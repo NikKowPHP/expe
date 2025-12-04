@@ -13,18 +13,26 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'
 
 export default function AnalyticsPage() {
     const expenses = useLiveQuery(() => db.expenses.toArray());
+    const categories = useLiveQuery(() => db.categories.toArray());
     const { budgetStatuses } = useBudgets();
     const [insight, setInsight] = useState('');
     const [loadingInsight, setLoadingInsight] = useState(false);
 
-    if (!expenses) return <div className="p-6">Loading...</div>;
+    if (!expenses || !categories) return <div className="p-6">Loading...</div>;
 
     // Check for exceeded budgets
     const exceededBudgets = budgetStatuses.filter(b => b.remaining < 0);
 
+    // Create a map of category_id to category title
+    const categoryMap = categories.reduce((acc, cat) => {
+        acc[cat.id] = cat.name;
+        return acc;
+    }, {} as Record<string, string>);
+
     // Group by category
     const byCategory = expenses.reduce((acc, curr) => {
-        acc[curr.category_id] = (acc[curr.category_id] || 0) + curr.amount;
+        const categoryName = categoryMap[curr.category_id] || 'Unknown';
+        acc[categoryName] = (acc[categoryName] || 0) + curr.amount;
         return acc;
     }, {} as Record<string, number>);
 

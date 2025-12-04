@@ -2,8 +2,9 @@
 
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db/db';
+import { getIconComponent } from '@/lib/utils/icons';
 import { format } from 'date-fns';
-import { ArrowUpRight, ArrowDownLeft, Wallet, TrendingUp } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, Wallet, TrendingUp, DollarSign } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useBudgets } from '@/lib/hooks/use-budgets';
 import { cn } from '@/lib/utils';
@@ -13,11 +14,17 @@ export function DashboardView() {
     const expenses = useLiveQuery(
         () => db.expenses.orderBy('date').reverse().limit(10).toArray()
     );
+    
+    const categories = useLiveQuery(() => db.categories.toArray());
 
     const totalSpent = useLiveQuery(async () => {
         const all = await db.expenses.toArray();
         return all.reduce((sum, e) => sum + e.amount, 0);
     });
+    
+    const getCategoryById = (id: string) => {
+        return categories?.find(c => c.id === id);
+    };
 
     return (
         <div className="p-6 space-y-8">
@@ -53,28 +60,32 @@ export function DashboardView() {
             <div>
                 <h2 className="text-xl font-bold mb-4">Recent Activity</h2>
                 <div className="space-y-4">
-                    {expenses?.map((expense) => (
-                        <motion.div
-                            key={expense.id}
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            className="flex items-center justify-between p-4 bg-card rounded-2xl shadow-sm border border-border"
-                        >
-                            <div className="flex items-center space-x-4">
-                                <div className="w-10 h-10 rounded-full bg-secondary flex items-center justify-center">
-                                    {/* Icon placeholder - in real app, map category_id to icon */}
-                                    <div className="w-4 h-4 bg-primary/20 rounded-full" />
+                    {expenses?.map((expense) => {
+                        const category = getCategoryById(expense.category_id);
+                        const CategoryIcon = category ? getIconComponent(category.icon) : DollarSign;
+                        
+                        return (
+                            <motion.div
+                                key={expense.id}
+                                initial={{ opacity: 0, x: -20 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                className="flex items-center justify-between p-4 bg-card rounded-2xl shadow-sm border border-border"
+                            >
+                                <div className="flex items-center space-x-4">
+                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center ${category?.color || 'bg-primary/10'}`}>
+                                        <CategoryIcon className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <p className="font-medium">{category?.name || expense.note || 'Expense'}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {format(new Date(expense.date), 'MMM d, h:mm a')}
+                                        </p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className="font-medium">{expense.note || 'Expense'}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                        {format(new Date(expense.date), 'MMM d, h:mm a')}
-                                    </p>
-                                </div>
-                            </div>
-                            <span className="font-bold">-${expense.amount.toFixed(2)}</span>
-                        </motion.div>
-                    ))}
+                                <span className="font-bold">-${expense.amount.toFixed(2)}</span>
+                            </motion.div>
+                        );
+                    })}
 
                     {expenses?.length === 0 && (
                         <div className="text-center text-muted-foreground py-8">
