@@ -179,6 +179,7 @@ export default function SettingsPage() {
                     className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                     <option value="USD">🇺🇸 USD - US Dollar</option>
+                    <option value="PLN">🇵🇱 PLN - Polish Złoty</option>
                     <option value="EUR">🇪🇺 EUR - Euro</option>
                     <option value="GBP">🇬🇧 GBP - British Pound</option>
                     <option value="JPY">🇯🇵 JPY - Japanese Yen</option>

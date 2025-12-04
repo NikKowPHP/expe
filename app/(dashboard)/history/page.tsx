@@ -179,36 +179,43 @@ export default function HistoryPage() {
                             const CategoryIcon = category ? getIconComponent(category.icon) : DollarSign;
                             
                             return (
-                                <motion.div
-                                    key={expense.id}
-                                    initial={{ opacity: 0, y: 20 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    exit={{ opacity: 0, x: -100 }}
-                                    transition={{ delay: index * 0.05 }}
-                                    className="flex items-center gap-4 p-4 bg-card rounded-2xl border border-border"
-                                >
-                                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${category?.color || 'bg-primary/10'}`}>
-                                        <CategoryIcon className="w-6 h-6" />
+                                <div key={expense.id} className="relative overflow-hidden rounded-2xl mb-3">
+                                    <div className="absolute inset-0 bg-destructive flex items-center justify-end px-6 rounded-2xl">
+                                        <Trash2 className="w-6 h-6 text-white" />
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="font-semibold">{category?.name || 'Unknown'}</p>
-                                        {expense.note && (
-                                            <p className="text-sm text-muted-foreground truncate">{expense.note}</p>
-                                        )}
-                                        <p className="text-xs text-muted-foreground">
-                                            {format(parseISO(expense.date), 'MMM d, yyyy')}
-                                        </p>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <span className="font-bold text-lg">${expense.amount.toFixed(2)}</span>
-                                        <button
-                                            onClick={() => handleDelete(expense.id)}
-                                            className="p-2 hover:bg-destructive/10 hover:text-destructive rounded-lg transition-colors"
-                                        >
-                                            <Trash2 className="w-5 h-5" />
-                                        </button>
-                                    </div>
-                                </motion.div>
+                                    <motion.div
+                                        drag="x"
+                                        dragConstraints={{ left: -100, right: 0 }}
+                                        dragElastic={0.1}
+                                        onDragEnd={(_, info) => {
+                                            if (info.offset.x < -100) {
+                                                handleDelete(expense.id);
+                                            }
+                                        }}
+                                        initial={{ x: 0, opacity: 0, y: 20 }}
+                                        animate={{ x: 0, opacity: 1, y: 0 }}
+                                        exit={{ height: 0, opacity: 0, marginBottom: 0 }}
+                                        whileDrag={{ scale: 1.02 }}
+                                        className="relative flex items-center gap-4 p-4 bg-card rounded-2xl border border-border z-10"
+                                        style={{ touchAction: 'none' }}
+                                    >
+                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${category?.color || 'bg-primary/10'}`}>
+                                            <CategoryIcon className="w-6 h-6" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="font-semibold">{category?.name || 'Unknown'}</p>
+                                            {expense.note && (
+                                                <p className="text-sm text-muted-foreground truncate">{expense.note}</p>
+                                            )}
+                                            <p className="text-xs text-muted-foreground">
+                                                {format(parseISO(expense.date), 'MMM d, yyyy')}
+                                            </p>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <span className="font-bold text-lg">${expense.amount.toFixed(2)}</span>
+                                        </div>
+                                    </motion.div>
+                                </div>
                             );
                         })
                     )}
