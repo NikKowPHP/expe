@@ -11,6 +11,8 @@ import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { CategoryManager } from '@/components/features/categories/CategoryManager';
 import { BudgetManager } from '@/components/features/budgets/BudgetManager';
+import { RecurringExpensesList } from '@/components/features/expenses/RecurringExpensesList';
+import { RefreshCw } from 'lucide-react';
 
 export default function SettingsPage() {
     const { theme, setTheme } = useTheme();
@@ -20,7 +22,7 @@ export default function SettingsPage() {
     const router = useRouter();
     const supabase = createClient();
 
-    const expenses = useLiveQuery(() => db.expenses.toArray());
+    const expenses = useLiveQuery(() => db.expenses.filter(e => !e.deleted_at).toArray());
     const categories = useLiveQuery(() => db.categories.toArray());
 
     useEffect(() => {
@@ -280,6 +282,15 @@ export default function SettingsPage() {
                 description="Set monthly spending limits for categories"
             >
                 <BudgetManager />
+            </SettingSection>
+
+            {/* Recurring Expenses */}
+            <SettingSection
+                icon={RefreshCw}
+                title="Recurring Expenses"
+                description="Manage your subscriptions and recurring costs"
+            >
+                <RecurringExpensesList />
             </SettingSection>
 
             {/* About */}

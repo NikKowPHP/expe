@@ -35,7 +35,8 @@ export function useOfflineSync() {
         const userId = user.id;
 
         try {
-            // 0. Sync categories first (needed for expenses)
+            // --- 0. Sync Categories ---
+            // Pull
             const { data: remoteCategories, error: categoriesError } = await supabase
                 .from('categories')
                 .select('*')
@@ -50,24 +51,18 @@ export function useOfflineSync() {
                 }
             }
 
-            // 0b. Push pending category changes
+            // Push pending
             const pendingCategories = await db.categories.where('sync_status').equals('pending').toArray();
-            
             for (const category of pendingCategories) {
                 try {
                     if (category.is_default) {
-                        // Update default category
                         const { error } = await supabase.from('categories').update({
                             name: category.name,
                             icon: category.icon,
                             color: category.color,
                         }).eq('id', category.id).eq('user_id', userId);
-
-                        if (!error) {
-                            await db.categories.update(category.id, { sync_status: 'synced' });
-                        }
+                        if (!error) await db.categories.update(category.id, { sync_status: 'synced' });
                     } else {
-                        // Upsert custom category
                         const { error } = await supabase.from('categories').upsert({
                             id: category.id,
                             user_id: category.user_id,
@@ -77,19 +72,17 @@ export function useOfflineSync() {
                             color: category.color,
                             is_default: category.is_default,
                         });
-
-                        if (!error) {
-                            await db.categories.update(category.id, { sync_status: 'synced' });
-                        }
+                        if (!error) await db.categories.update(category.id, { sync_status: 'synced' });
                     }
                 } catch (error) {
                     console.error('Failed to sync category:', category.id, error);
                 }
             }
 
-            // 1. Push pending expenses
+            // --- 1. Sync Expenses (Robust Sync with Soft Deletes) ---
+            
+            // Push pending
             const pendingExpenses = await db.expenses.where('sync_status').equals('pending').toArray();
-
             for (const expense of pendingExpenses) {
                 const { error } = await supabase.from('expenses').upsert({
                     id: expense.id,
@@ -98,7 +91,9 @@ export function useOfflineSync() {
                     amount: expense.amount,
                     note: expense.note,
                     date: expense.date,
-                    updated_at: new Date().toISOString(), // Update timestamp
+                    created_at: expense.created_at,
+                    updated_at: expense.updated_at,
+                    deleted_at: expense.deleted_at, // Send deleted_at
                 });
 
                 if (!error) {
@@ -106,29 +101,92 @@ export function useOfflineSync() {
                 }
             }
 
-            // 2. Pull new expenses (Simple strategy: fetch all after last sync? Or just all for now?)
-            // For simplicity, let's just fetch the last 50 expenses for now.
-            const { data: remoteExpenses, error: fetchError } = await supabase
+            // Pull new/updated (Incremental Sync)
+            const lastSync = localStorage.getItem('last_expense_sync');
+            let query = supabase
                 .from('expenses')
                 .select('*')
-                .order('date', { ascending: false })
-                .limit(50);
+                .eq('user_id', userId);
+
+            if (lastSync) {
+                query = query.gt('updated_at', lastSync);
+            }
+            
+            // Fetch all changes (no limit, or handle pagination if needed. For now, assume reasonable volume)
+            const { data: remoteExpenses, error: fetchError } = await query;
 
             if (remoteExpenses && !fetchError) {
                 for (const remoteExpense of remoteExpenses) {
-                    // Check if it exists locally
                     const localExpense = await db.expenses.get(remoteExpense.id);
+                    
+                    // If local has pending changes, conflict resolution needed. 
+                    // For now, server wins or we skip. Let's say server wins for simplicity unless we want to get fancy.
+                    // But if we just edited it locally, we might want to keep local.
+                    // Simple rule: if local is 'synced' or doesn't exist, overwrite.
                     if (!localExpense || localExpense.sync_status === 'synced') {
-                        // Only overwrite if local is synced (don't overwrite pending local changes)
                         await db.expenses.put({
                             ...remoteExpense,
                             sync_status: 'synced',
                         });
                     }
                 }
+                // Update last sync timestamp
+                if (remoteExpenses.length > 0) {
+                     // Find the max updated_at
+                     const maxUpdatedAt = remoteExpenses.reduce((max, current) => {
+                         return current.updated_at > max ? current.updated_at : max;
+                     }, lastSync || '1970-01-01');
+                     localStorage.setItem('last_expense_sync', maxUpdatedAt);
+                } else if (!lastSync) {
+                    // If first sync and no data, set to now to avoid fetching everything next time? 
+                    // No, better to leave it null or set to a safe past date.
+                    localStorage.setItem('last_expense_sync', new Date().toISOString());
+                }
             }
 
-            // 3. Sync budgets
+
+            // --- 2. Sync Recurring Expenses ---
+             // Pull
+             const { data: remoteRecurring, error: recurringError } = await supabase
+                .from('recurring_expenses')
+                .select('*')
+                .eq('user_id', userId);
+
+            if (remoteRecurring && !recurringError) {
+                for (const item of remoteRecurring) {
+                    await db.recurring_expenses.put({
+                        ...item,
+                        sync_status: 'synced',
+                    });
+                }
+            }
+
+            // Push pending
+            const pendingRecurring = await db.recurring_expenses.where('sync_status').equals('pending').toArray();
+            for (const item of pendingRecurring) {
+                const { error } = await supabase.from('recurring_expenses').upsert({
+                    id: item.id,
+                    user_id: item.user_id,
+                    category_id: item.category_id,
+                    amount: item.amount,
+                    description: item.description,
+                    frequency: item.frequency,
+                    next_due_date: item.next_due_date,
+                    active: item.active,
+                    created_at: item.created_at,
+                    updated_at: item.updated_at,
+                });
+
+                if (!error) {
+                    await db.recurring_expenses.update(item.id, { sync_status: 'synced' });
+                }
+            }
+
+            // --- 3. Process Due Recurring Expenses ---
+            await processRecurringExpenses(userId);
+
+
+            // --- 4. Sync Budgets ---
             const { data: remoteBudgets, error: budgetsError } = await supabase
                 .from('budgets')
                 .select('*')
@@ -143,9 +201,8 @@ export function useOfflineSync() {
                 }
             }
 
-            // 3b. Push pending budget changes
+            // Push pending budgets
             const pendingBudgets = await db.budgets.where('sync_status').equals('pending').toArray();
-            
             for (const budget of pendingBudgets) {
                 try {
                     const { error } = await supabase.from('budgets').upsert({
@@ -169,6 +226,61 @@ export function useOfflineSync() {
             console.error('Sync failed:', error);
         } finally {
             setIsSyncing(false);
+        }
+    };
+
+    const processRecurringExpenses = async (userId: string) => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const activeRecurring = await db.recurring_expenses
+            .where('active').equals(1 as any) // Dexie boolean mapping
+            .toArray(); // Filter in memory if needed, or use proper index
+
+        // Dexie stores booleans as 1/0 sometimes depending on backend, but usually true/false works.
+        // Let's just fetch all and filter.
+        const allRecurring = await db.recurring_expenses.toArray();
+        
+        for (const recurring of allRecurring) {
+            if (!recurring.active) continue;
+
+            let nextDue = new Date(recurring.next_due_date);
+            let modified = false;
+
+            while (nextDue <= today) {
+                // Create expense
+                await db.expenses.add({
+                    id: crypto.randomUUID(),
+                    user_id: userId,
+                    category_id: recurring.category_id,
+                    amount: recurring.amount,
+                    note: recurring.description || 'Recurring Expense',
+                    date: nextDue.toISOString(),
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                    sync_status: 'pending',
+                });
+
+                // Calculate next date
+                if (recurring.frequency === 'daily') {
+                    nextDue.setDate(nextDue.getDate() + 1);
+                } else if (recurring.frequency === 'weekly') {
+                    nextDue.setDate(nextDue.getDate() + 7);
+                } else if (recurring.frequency === 'monthly') {
+                    nextDue.setMonth(nextDue.getMonth() + 1);
+                } else if (recurring.frequency === 'yearly') {
+                    nextDue.setFullYear(nextDue.getFullYear() + 1);
+                }
+                modified = true;
+            }
+
+            if (modified) {
+                await db.recurring_expenses.update(recurring.id, {
+                    next_due_date: nextDue.toISOString(),
+                    updated_at: new Date().toISOString(),
+                    sync_status: 'pending',
+                });
+            }
         }
     };
 

@@ -4,24 +4,18 @@ import { db } from '@/lib/db/db';
 
 export function useExpenseMutations() {
   const deleteExpense = async (id: string) => {
-    // Delete from local database first
-    await db.expenses.delete(id);
-
-    // Try to delete from server if online
-    if (navigator.onLine) {
-      try {
-        const response = await fetch(`/api/expenses/${id}`, {
-          method: 'DELETE',
-        });
-        
-        if (!response.ok) {
-          console.error('Failed to delete expense from server:', response.statusText);
-        }
-      } catch (error) {
-        console.error('Failed to delete expense from server:', error);
-        // Even if the server delete fails, keep local deletion
-        // The item won't be re-synced since it doesn't exist locally
-      }
+    // Soft delete: update deleted_at and sync_status
+    try {
+      await db.expenses.update(id, {
+        deleted_at: new Date().toISOString(),
+        sync_status: 'pending',
+        updated_at: new Date().toISOString(),
+      });
+      
+      // We don't need to call the API directly here. 
+      // useOfflineSync will pick up the pending change and sync it.
+    } catch (error) {
+      console.error('Failed to delete expense:', error);
     }
   };
 

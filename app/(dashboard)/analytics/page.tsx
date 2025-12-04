@@ -12,7 +12,7 @@ import { AlertCircle } from 'lucide-react';
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
 export default function AnalyticsPage() {
-    const expenses = useLiveQuery(() => db.expenses.toArray());
+    const expenses = useLiveQuery(() => db.expenses.filter(e => !e.deleted_at).toArray());
     const categories = useLiveQuery(() => db.categories.toArray());
     const { budgetStatuses } = useBudgets();
     const [insight, setInsight] = useState('');

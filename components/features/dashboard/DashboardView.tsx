@@ -13,13 +13,13 @@ import { formatCurrency, getCurrency } from '@/lib/utils/currency';
 
 export function DashboardView() {
     const expenses = useLiveQuery(
-        () => db.expenses.orderBy('date').reverse().limit(10).toArray()
+        () => db.expenses.orderBy('date').filter(e => !e.deleted_at).reverse().limit(10).toArray()
     );
     
     const categories = useLiveQuery(() => db.categories.toArray());
 
     const totalSpent = useLiveQuery(async () => {
-        const all = await db.expenses.toArray();
+        const all = await db.expenses.filter(e => !e.deleted_at).toArray();
         return all.reduce((sum, e) => sum + e.amount, 0);
     });
     

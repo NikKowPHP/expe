@@ -44,7 +44,7 @@ export function AddExpenseWizard() {
         setStep(3);
     };
 
-    const handleDetailsSubmit = async (finalNote: string, finalDate: Date) => {
+    const handleDetailsSubmit = async (finalNote: string, finalDate: Date, isRecurring: boolean, frequency: 'daily' | 'weekly' | 'monthly' | 'yearly') => {
         setNote(finalNote);
         setDate(finalDate);
 
@@ -53,8 +53,8 @@ export function AddExpenseWizard() {
             return;
         }
 
-        // Save to Dexie
         try {
+            // 1. Save the immediate expense
             await db.expenses.add({
                 id: uuidv4(),
                 user_id: userId,
@@ -66,6 +66,30 @@ export function AddExpenseWizard() {
                 updated_at: new Date().toISOString(),
                 sync_status: 'pending',
             });
+
+            // 2. If recurring, save the recurring schedule
+            if (isRecurring) {
+                // Calculate next due date
+                const nextDue = new Date(finalDate);
+                if (frequency === 'daily') nextDue.setDate(nextDue.getDate() + 1);
+                if (frequency === 'weekly') nextDue.setDate(nextDue.getDate() + 7);
+                if (frequency === 'monthly') nextDue.setMonth(nextDue.getMonth() + 1);
+                if (frequency === 'yearly') nextDue.setFullYear(nextDue.getFullYear() + 1);
+
+                await db.recurring_expenses.add({
+                    id: uuidv4(),
+                    user_id: userId,
+                    category_id: categoryId,
+                    amount: parseFloat(amount),
+                    description: finalNote,
+                    frequency: frequency,
+                    next_due_date: nextDue.toISOString(),
+                    active: true,
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                    sync_status: 'pending',
+                });
+            }
 
             // Navigate back to home - sync will happen automatically via useOfflineSync
             router.push('/');

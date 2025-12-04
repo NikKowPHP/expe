@@ -12,7 +12,7 @@ import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths
 import { formatCurrency, getCurrency } from '@/lib/utils/currency';
 
 export default function HistoryPage() {
-    const expenses = useLiveQuery(() => db.expenses.orderBy('date').reverse().toArray());
+    const expenses = useLiveQuery(() => db.expenses.orderBy('date').filter(e => !e.deleted_at).reverse().toArray());
     const categories = useLiveQuery(() => db.categories.toArray());
     const { deleteExpense } = useExpenseMutations();
     const currency = getCurrency();

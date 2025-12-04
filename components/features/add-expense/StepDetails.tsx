@@ -7,13 +7,15 @@ import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
 
 interface StepDetailsProps {
-    onSubmit: (note: string, date: Date) => void;
+    onSubmit: (note: string, date: Date, isRecurring: boolean, frequency: 'daily' | 'weekly' | 'monthly' | 'yearly') => void;
     onBack: () => void;
 }
 
 export function StepDetails({ onSubmit, onBack }: StepDetailsProps) {
     const [note, setNote] = useState('');
     const [date, setDate] = useState(new Date());
+    const [isRecurring, setIsRecurring] = useState(false);
+    const [frequency, setFrequency] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('monthly');
     const inputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -22,7 +24,7 @@ export function StepDetails({ onSubmit, onBack }: StepDetailsProps) {
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
-            onSubmit(note, date);
+            onSubmit(note, date, isRecurring, frequency);
         }
     };
 
@@ -59,16 +61,43 @@ export function StepDetails({ onSubmit, onBack }: StepDetailsProps) {
                     <div className="flex items-center p-4 bg-secondary rounded-xl">
                         <Calendar className="w-6 h-6 mr-3 text-muted-foreground" />
                         <span className="text-lg">{format(date, 'MMMM d, yyyy')}</span>
-                        {/* Date picker could go here, keeping it simple for now */}
                     </div>
                 </div>
+
+                <div className="flex items-center justify-between p-4 bg-secondary rounded-xl">
+                    <div className="flex items-center">
+                        <input
+                            type="checkbox"
+                            checked={isRecurring}
+                            onChange={(e) => setIsRecurring(e.target.checked)}
+                            className="w-5 h-5 mr-3 accent-primary"
+                        />
+                        <span className="text-lg">Recurring Payment</span>
+                    </div>
+                </div>
+
+                {isRecurring && (
+                    <div className="p-4 bg-secondary rounded-xl animate-in fade-in slide-in-from-top-2">
+                        <label className="block text-sm font-medium text-muted-foreground mb-2">Frequency</label>
+                        <select
+                            value={frequency}
+                            onChange={(e) => setFrequency(e.target.value as any)}
+                            className="w-full p-2 bg-background rounded-lg outline-none"
+                        >
+                            <option value="daily">Daily</option>
+                            <option value="weekly">Weekly</option>
+                            <option value="monthly">Monthly</option>
+                            <option value="yearly">Yearly</option>
+                        </select>
+                    </div>
+                )}
             </div>
 
             <div className="mt-auto mb-8">
                 <Button
                     size="lg"
                     className="w-full h-14 text-lg rounded-xl"
-                    onClick={() => onSubmit(note, date)}
+                    onClick={() => onSubmit(note, date, isRecurring, frequency)}
                 >
                     <Check className="w-6 h-6 mr-2" />
                     Save Expense

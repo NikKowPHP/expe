@@ -34,7 +34,7 @@ export function useBudgets(month?: number, year?: number) {
 
   // Fetch all expenses to calculate spending
   const expenses = useLiveQuery(
-    () => db.expenses.toArray(),
+    () => db.expenses.filter(e => !e.deleted_at).toArray(),
     []
   );
 
