@@ -31,6 +31,12 @@ export default function SettingsPage() {
             }
         };
         getUser();
+
+        // Load currency preference from localStorage
+        const savedCurrency = localStorage.getItem('currency');
+        if (savedCurrency) {
+            setCurrency(savedCurrency);
+        }
     }, []);
 
     const handleLogout = async () => {
@@ -175,7 +181,11 @@ export default function SettingsPage() {
             >
                 <select
                     value={currency}
-                    onChange={(e) => setCurrency(e.target.value)}
+                    onChange={(e) => {
+                        const newCurrency = e.target.value;
+                        setCurrency(newCurrency);
+                        localStorage.setItem('currency', newCurrency);
+                    }}
                     className="w-full px-4 py-3 bg-background border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary"
                 >
                     <option value="USD">🇺🇸 USD - US Dollar</option>

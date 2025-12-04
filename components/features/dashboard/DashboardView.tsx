@@ -9,6 +9,7 @@ import { motion } from 'framer-motion';
 import { useBudgets } from '@/lib/hooks/use-budgets';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
+import { formatCurrency, getCurrency } from '@/lib/utils/currency';
 
 export function DashboardView() {
     const expenses = useLiveQuery(
@@ -26,6 +27,8 @@ export function DashboardView() {
         return categories?.find(c => c.id === id);
     };
 
+    const currency = getCurrency();
+
     return (
         <div className="p-6 space-y-8">
             {/* Header / Total Balance */}
@@ -39,7 +42,7 @@ export function DashboardView() {
                     <Wallet className="w-5 h-5 opacity-80" />
                 </div>
                 <h1 className="text-4xl font-bold">
-                    ${totalSpent?.toFixed(2) || '0.00'}
+                    {formatCurrency(totalSpent || 0, currency)}
                 </h1>
                 <div className="mt-4 flex space-x-4">
                     <div className="flex items-center text-sm bg-white/10 px-3 py-1 rounded-full">
@@ -82,7 +85,7 @@ export function DashboardView() {
                                         </p>
                                     </div>
                                 </div>
-                                <span className="font-bold">-${expense.amount.toFixed(2)}</span>
+                                <span className="font-bold">-{formatCurrency(expense.amount, currency)}</span>
                             </motion.div>
                         );
                     })}
@@ -100,6 +103,7 @@ export function DashboardView() {
 
 function BudgetProgressSection() {
     const { budgetStatuses } = useBudgets();
+    const currency = getCurrency();
     
     // Show top 3 budgets only
     const topBudgets = budgetStatuses.slice(0, 3);
@@ -148,8 +152,8 @@ function BudgetProgressSection() {
                         </div>
                         <div className="space-y-1">
                             <div className="flex justify-between text-xs text-muted-foreground">
-                                <span>${budget.spent.toFixed(2)} spent</span>
-                                <span>${budget.budgetAmount.toFixed(2)} budget</span>
+                                <span>{formatCurrency(budget.spent, currency)} spent</span>
+                                <span>{formatCurrency(budget.budgetAmount, currency)} budget</span>
                             </div>
                             <div className="h-2 bg-secondary rounded-full overflow-hidden">
                                 <div
@@ -159,7 +163,7 @@ function BudgetProgressSection() {
                             </div>
                             {budget.remaining < 0 && (
                                 <p className="text-xs font-medium text-red-600">
-                                    Over by ${Math.abs(budget.remaining).toFixed(2)}
+                                    Over by {formatCurrency(Math.abs(budget.remaining), currency)}
                                 </p>
                             )}
                         </div>

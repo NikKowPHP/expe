@@ -9,11 +9,13 @@ import { Search, Filter, X, Trash2, Calendar, DollarSign } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
+import { formatCurrency, getCurrency } from '@/lib/utils/currency';
 
 export default function HistoryPage() {
     const expenses = useLiveQuery(() => db.expenses.orderBy('date').reverse().toArray());
     const categories = useLiveQuery(() => db.categories.toArray());
     const { deleteExpense } = useExpenseMutations();
+    const currency = getCurrency();
 
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
@@ -84,7 +86,7 @@ export default function HistoryPage() {
             <div>
                 <h1 className="text-3xl font-bold mb-2">History</h1>
                 <p className="text-muted-foreground">
-                    {filteredExpenses.length} expense{filteredExpenses.length !== 1 ? 's' : ''} · ${totalAmount.toFixed(2)} total
+                    {filteredExpenses.length} expense{filteredExpenses.length !== 1 ? 's' : ''} · {formatCurrency(totalAmount, currency)} total
                 </p>
             </div>
 
@@ -212,7 +214,7 @@ export default function HistoryPage() {
                                             </p>
                                         </div>
                                         <div className="flex items-center gap-3">
-                                            <span className="font-bold text-lg">${expense.amount.toFixed(2)}</span>
+                                            <span className="font-bold text-lg">{formatCurrency(expense.amount, currency)}</span>
                                         </div>
                                     </motion.div>
                                 </div>
