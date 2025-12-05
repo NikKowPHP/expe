@@ -58,7 +58,7 @@ export function StepReceiptReview({
         <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="fixed inset-0 z-[60] bg-background flex flex-col p-4 pb-24 overflow-y-auto"
+            className="fixed inset-0 z-[60] bg-background flex flex-col p-4 pb-40 overflow-y-auto"
         >
             <div className="flex items-center mb-6">
                 <Button variant="ghost" onClick={onCancel} className="mr-2">
