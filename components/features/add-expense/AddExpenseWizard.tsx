@@ -71,9 +71,13 @@ export function AddExpenseWizard() {
         setStep(3);
     };
 
-    const handleScanReceipt = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleScanReceipt = async (e: React.ChangeEvent<HTMLInputElement>, selectedAccountId?: string) => {
         const file = e.target.files?.[0];
         if (!file) return;
+
+        if (selectedAccountId) {
+            setAccountId(selectedAccountId);
+        }
 
         // Show loading state (could add a global loading state or pass to StepAmount)
         // For now, let's just log
@@ -92,11 +96,14 @@ export function AddExpenseWizard() {
             const base64 = reader.result as string;
             
             try {
+                // Fetch all subcategories to help AI match existing ones
+                const allSubcategories = await db.subcategories.toArray();
+
                 // Fetch categories for AI context
                 const res = await fetch('/api/ai/scan-receipt', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ image: base64, categories }),
+                    body: JSON.stringify({ image: base64, categories, subcategories: allSubcategories }),
                 });
 
                 if (!res.ok) {

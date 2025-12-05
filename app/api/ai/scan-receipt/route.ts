@@ -7,7 +7,7 @@ export async function POST(req: Request) {
   try {
 
 
-    const { image, categories } = await req.json();
+    const { image, categories, subcategories } = await req.json();
 
     if (!image || !categories) {
       return NextResponse.json(
@@ -20,6 +20,12 @@ export async function POST(req: Request) {
       id: c.id,
       name: c.name,
     }));
+
+    const subcategoryList = subcategories ? subcategories.map((s: { id: string; name: string; category_id: string }) => ({
+      id: s.id,
+      name: s.name,
+      category_id: s.category_id,
+    })) : [];
 
     // --- Stage 1: parse base64 and upload as File ---
 
@@ -52,10 +58,15 @@ For each item:
 1. Extract the Item Name (description).
 2. Extract the Item Price (amount). Ensure you parse commas as decimals (e.g., 3,99 becomes 3.99).
 3. Select the most appropriate Category ID from the provided list.
-4. Extract a generic "Subcategory Name" (e.g., from "Whole Grain Bread 500g" extract "Bread"). This should be a short, general description of the product.
+4. Select the most appropriate "Subcategory Name" from the list of existing subcategories for the chosen Category ID. 
+   - If an existing subcategory fits well, use its EXACT name.
+   - If NO existing subcategory fits, create a new, short, generic "Subcategory Name" (e.g., from "Whole Grain Bread 500g" extract "Bread").
 
 Categories List:
 ${JSON.stringify(categoryList)}
+
+Existing Subcategories List:
+${JSON.stringify(subcategoryList)}
 
 Return ONLY a JSON object with this structure:
 {
@@ -69,7 +80,7 @@ Return ONLY a JSON object with this structure:
       "subcategory_name": "Dairy" 
     },
     { 
-      "description": "Bread", 
+      "description": "Fancy Bread", 
       "amount": 1.50, 
       "category_id": "uuid...",
       "subcategory_name": "Bread" 

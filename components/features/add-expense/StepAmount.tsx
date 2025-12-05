@@ -7,7 +7,7 @@ import { db } from '@/lib/db/db';
 
 interface StepAmountProps {
     onNext: (amount: string, type: 'expense' | 'income', accountId: string) => void;
-    onScan: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    onScan: (e: React.ChangeEvent<HTMLInputElement>, accountId: string) => void;
     isScanning?: boolean;
     scanError?: string | null;
 }
@@ -124,7 +124,7 @@ export function StepAmount({ onNext, onScan, isScanning = false, scanError = nul
                             accept="image/*"
                             capture="environment"
                             className="hidden"
-                            onChange={onScan}
+                            onChange={(e) => onScan(e, resolvedAccountId)}
                             disabled={isScanning}
                         />
                     </Button>
