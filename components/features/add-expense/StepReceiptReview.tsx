@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Trash2, Check, ArrowLeft, Calendar, Store } from 'lucide-react';
+import { Trash2, Check, ArrowLeft, Calendar, Store, Wallet } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface ReceiptItem {
@@ -16,6 +16,9 @@ interface StepReceiptReviewProps {
     merchant: string;
     date: string;
     categories: { id: string; name: string }[];
+    accounts: { id: string; name: string }[];
+    accountId: string;
+    onChangeAccount: (id: string) => void;
     onSave: (items: ReceiptItem[], merchant: string, date: Date) => void;
     onCancel: () => void;
 }
@@ -25,6 +28,9 @@ export function StepReceiptReview({
     merchant,
     date,
     categories,
+    accounts,
+    accountId,
+    onChangeAccount,
     onSave,
     onCancel,
 }: StepReceiptReviewProps) {
@@ -48,7 +54,7 @@ export function StepReceiptReview({
         <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="flex flex-col h-full p-4 pb-24 overflow-y-auto"
+            className="fixed inset-0 z-60 bg-background flex flex-col p-4 pb-24 overflow-y-auto"
         >
             <div className="flex items-center mb-6">
                 <Button variant="ghost" onClick={onCancel} className="mr-2">
@@ -74,6 +80,19 @@ export function StepReceiptReview({
                         onChange={(e) => setReceiptDate(e.target.value)}
                         className="bg-transparent text-sm w-full outline-none"
                     />
+                </div>
+                <div className="flex items-center gap-2">
+                    <Wallet className="w-4 h-4 text-muted-foreground" />
+                    <select
+                        value={accountId}
+                        onChange={(e) => onChangeAccount(e.target.value)}
+                        className="bg-transparent text-sm w-full outline-none"
+                    >
+                        <option value="" disabled>Select Account</option>
+                        {accounts.map(acc => (
+                            <option key={acc.id} value={acc.id}>{acc.name}</option>
+                        ))}
+                    </select>
                 </div>
             </div>
 
@@ -114,7 +133,7 @@ export function StepReceiptReview({
                 ))}
             </div>
 
-            <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t border-border z-10">
+            <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t border-border z-60">
                 <div className="flex justify-between items-center mb-4 px-2">
                     <span className="text-muted-foreground">Total items: {items.length}</span>
                     <span className="text-xl font-bold">${total.toFixed(2)}</span>

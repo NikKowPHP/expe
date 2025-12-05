@@ -36,6 +36,7 @@ export function AddExpenseWizard() {
     } | null>(null);
     const supabase = createClient();
     const categories = useLiveQuery(() => db.categories.toArray());
+    const accounts = useLiveQuery(() => db.accounts.toArray());
 
     useEffect(() => {
         // Get authenticated user
@@ -163,18 +164,32 @@ export function AddExpenseWizard() {
             return;
         }
 
-        const newExpenses = items.map((item) => ({
-            id: uuidv4(),
-            user_id: userId,
-            account_id: accountId,
-            category_id: item.category_id,
-            amount: item.amount,
-            note: `${merchant} - ${item.description}`,
-            date: receiptDate.toISOString(),
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            sync_status: 'pending' as const,
-        }));
+        // Group items by category
+        const itemsByCategory = new Map<string, ReceiptItem[]>();
+        
+        for (const item of normalizedItems) {
+            const current = itemsByCategory.get(item.category_id) || [];
+            current.push(item);
+            itemsByCategory.set(item.category_id, current);
+        }
+
+        const newExpenses = Array.from(itemsByCategory.entries()).map(([catId, catItems]) => {
+            const totalAmount = catItems.reduce((sum, item) => sum + item.amount, 0);
+            
+            return {
+                id: uuidv4(),
+                user_id: userId,
+                account_id: accountId,
+                category_id: catId,
+                amount: totalAmount,
+                note: merchant,
+                items: catItems.map(i => ({ description: i.description, amount: i.amount })),
+                date: receiptDate.toISOString(),
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                sync_status: 'pending' as const,
+            };
+        });
 
         await db.expenses.bulkAdd(newExpenses);
         router.push('/');
@@ -262,6 +277,9 @@ export function AddExpenseWizard() {
                         merchant={scannedData.merchant}
                         date={scannedData.date}
                         categories={categories}
+                        accounts={accounts || []}
+                        accountId={accountId}
+                        onChangeAccount={setAccountId}
                         onSave={handleReceiptSave}
                         onCancel={() => {
                             setScannedData(null);

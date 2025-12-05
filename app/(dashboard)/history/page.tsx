@@ -5,11 +5,11 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, Expense } from '@/lib/db/db';
 import { useExpenseMutations } from '@/lib/hooks/use-expense-mutations';
 import { getIconComponent } from '@/lib/utils/icons';
-import { Search, Filter, X, Trash2, Calendar, DollarSign } from 'lucide-react';
+import { Search, X, Trash2, Calendar, DollarSign } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Button } from '@/components/ui/button';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { formatCurrency, getCurrency } from '@/lib/utils/currency';
+import { ExpenseDetailsModal } from '@/components/features/expenses/ExpenseDetailsModal';
 
 export default function HistoryPage() {
     const expenses = useLiveQuery(() => db.expenses.orderBy('date').filter(e => !e.deleted_at).reverse().toArray());
@@ -21,6 +21,7 @@ export default function HistoryPage() {
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
     const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
     const [dateRange, setDateRange] = useState<'all' | 'month' | '3months'>('all');
+    const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
 
     // Filter and sort expenses
     const filteredExpenses = useMemo(() => {
@@ -176,7 +177,7 @@ export default function HistoryPage() {
                             <p>No expenses found</p>
                         </motion.div>
                     ) : (
-                        filteredExpenses.map((expense, index) => {
+                        filteredExpenses.map((expense) => {
                             const category = getCategoryById(expense.category_id);
                             const CategoryIcon = category ? getIconComponent(category.icon) : DollarSign;
                             
@@ -194,11 +195,12 @@ export default function HistoryPage() {
                                                 handleDelete(expense.id);
                                             }
                                         }}
+                                        onClick={() => setSelectedExpense(expense)}
                                         initial={{ x: 0, opacity: 0, y: 20 }}
                                         animate={{ x: 0, opacity: 1, y: 0 }}
                                         exit={{ height: 0, opacity: 0, marginBottom: 0 }}
                                         whileDrag={{ scale: 1.02 }}
-                                        className="relative flex items-center gap-4 p-4 bg-card rounded-2xl border border-border z-10"
+                                        className="relative flex items-center gap-4 p-4 bg-card rounded-2xl border border-border z-10 cursor-pointer hover:bg-secondary/50 transition-colors"
                                         style={{ touchAction: 'none' }}
                                     >
                                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${category?.color || 'bg-primary/10'}`}>
@@ -223,6 +225,16 @@ export default function HistoryPage() {
                     )}
                 </AnimatePresence>
             </div>
+
+            <AnimatePresence>
+                {selectedExpense && (
+                    <ExpenseDetailsModal 
+                        expense={selectedExpense} 
+                        onClose={() => setSelectedExpense(null)} 
+                        getCategoryById={getCategoryById}
+                    />
+                )}
+            </AnimatePresence>
         </div>
     );
 }

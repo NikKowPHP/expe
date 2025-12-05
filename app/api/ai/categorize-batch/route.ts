@@ -1,7 +1,7 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { NextResponse } from 'next/server';
+import { GeminiClient } from '@/lib/gemini';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const client = new GeminiClient();
 
 export async function POST(req: Request) {
     try {
@@ -11,14 +11,8 @@ export async function POST(req: Request) {
             return NextResponse.json({ mapping: {} });
         }
 
-        // Use Flash model for speed and higher rate limits
-        const model = genAI.getGenerativeModel({ 
-            model: 'gemini-1.5-flash',
-            generationConfig: { responseMimeType: "application/json" } 
-        });
-
         // Create a clean list of categories for the AI
-        const categoryList = categories.map((c: any) => ({ id: c.id, name: c.name }));
+        const categoryList = categories.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name }));
 
         const prompt = `
             You are an expense classifier. 
@@ -33,9 +27,14 @@ export async function POST(req: Request) {
             If a description is completely ambiguous, use the ID for "Other" or null.
         `;
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
+        const text = await client.generateContent(
+            prompt,
+            undefined,
+            { 
+                model: 'gemini-1.5-flash',
+                generationConfig: { responseMimeType: "application/json" }
+            }
+        );
         
         // Parse the JSON response
         const mapping = JSON.parse(text);

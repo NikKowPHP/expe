@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type ReactNode, type ElementType } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db/db';
-import { Moon, Sun, Database, Download, Trash, Info, DollarSign, Bell, LogOut, User } from 'lucide-react';
+import { Moon, Sun, Database, Download, Trash, Info, DollarSign, Bell, LogOut, User, RefreshCw, Wallet, Cloud } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { useTheme } from 'next-themes';
@@ -14,8 +14,34 @@ import { BudgetManager } from '@/components/features/budgets/BudgetManager';
 import { RecurringExpensesList } from '@/components/features/expenses/RecurringExpensesList';
 import { AccountManager } from '@/components/features/accounts/AccountManager';
 import { CsvImport } from '@/components/features/settings/CsvImport';
-import { RefreshCw, Wallet, Cloud } from 'lucide-react';
 import { useOfflineSync } from '@/lib/hooks/use-offline-sync';
+
+
+interface SettingSectionProps {
+    icon: ElementType;
+    title: string;
+    description?: string;
+    children: ReactNode;
+}
+
+const SettingSection = ({ icon: Icon, title, description, children }: SettingSectionProps) => (
+    <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="bg-card p-6 rounded-3xl border border-border space-y-4"
+    >
+        <div className="flex items-center gap-3 mb-4">
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                <Icon className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+                <h2 className="font-semibold text-lg">{title}</h2>
+                {description && <p className="text-sm text-muted-foreground">{description}</p>}
+            </div>
+        </div>
+        {children}
+    </motion.div>
+);
 
 export default function SettingsPage() {
     const { theme, setTheme } = useTheme();
@@ -37,11 +63,13 @@ export default function SettingsPage() {
             }
         };
         getUser();
+    }, [supabase.auth]);
 
+    useEffect(() => {
         // Load currency preference from localStorage
         const savedCurrency = localStorage.getItem('currency');
         if (savedCurrency) {
-            setCurrency(savedCurrency);
+            setTimeout(() => setCurrency(savedCurrency), 0);
         }
     }, []);
 
@@ -87,25 +115,6 @@ export default function SettingsPage() {
         }
     };
 
-    const SettingSection = ({ icon: Icon, title, description, children }: any) => (
-        <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="bg-card p-6 rounded-3xl border border-border space-y-4"
-        >
-            <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
-                    <Icon className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                    <h2 className="font-semibold text-lg">{title}</h2>
-                    {description && <p className="text-sm text-muted-foreground">{description}</p>}
-                </div>
-            </div>
-            {children}
-        </motion.div>
-    );
-
     return (
         <div className="p-6 space-y-6 pb-24">
             <div>
@@ -135,8 +144,6 @@ export default function SettingsPage() {
                         Log Out
                     </Button>
                 </div>
-            </SettingSection>
-
             </SettingSection>
 
             {/* Cloud Sync */}

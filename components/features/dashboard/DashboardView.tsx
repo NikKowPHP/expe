@@ -1,19 +1,22 @@
 'use client';
 
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/lib/db/db';
+import { db, Expense } from '@/lib/db/db';
 import { getIconComponent } from '@/lib/utils/icons';
 import { format } from 'date-fns';
 import { ArrowUpRight, ArrowDownLeft, Wallet, TrendingUp, DollarSign } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useState } from 'react';
 import { useBudgets } from '@/lib/hooks/use-budgets';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { formatCurrency, getCurrency } from '@/lib/utils/currency';
 
 import { AccountCard } from '@/components/features/accounts/AccountCard';
+import { ExpenseDetailsModal } from '@/components/features/expenses/ExpenseDetailsModal';
 
 export function DashboardView() {
+    const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
     const expenses = useLiveQuery(
         () => db.expenses.orderBy('date').filter(e => !e.deleted_at).reverse().limit(10).toArray()
     );
@@ -108,9 +111,11 @@ export function DashboardView() {
                         return (
                             <motion.div
                                 key={expense.id}
+                                layoutId={expense.id}
+                                onClick={() => setSelectedExpense(expense)}
                                 initial={{ opacity: 0, x: -20 }}
                                 animate={{ opacity: 1, x: 0 }}
-                                className="flex items-center justify-between p-4 bg-card rounded-2xl shadow-sm border border-border"
+                                className="flex items-center justify-between p-4 bg-card rounded-2xl shadow-sm border border-border cursor-pointer hover:bg-secondary/50 transition-colors"
                             >
                                 <div className="flex items-center space-x-4">
                                     <div className={`w-10 h-10 rounded-full flex items-center justify-center ${category?.color || 'bg-primary/10'}`}>
@@ -135,6 +140,16 @@ export function DashboardView() {
                     )}
                 </div>
             </div>
+
+            <AnimatePresence>
+                {selectedExpense && (
+                    <ExpenseDetailsModal 
+                        expense={selectedExpense} 
+                        onClose={() => setSelectedExpense(null)} 
+                        getCategoryById={getCategoryById}
+                    />
+                )}
+            </AnimatePresence>
         </div>
     );
 }

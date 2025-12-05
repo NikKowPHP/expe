@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { db } from '@/lib/db/db';
 import { createClient } from '@/lib/supabase/client';
 // We'll assume we have a user from a context or just check auth.
@@ -23,13 +23,9 @@ export function useOfflineSync() {
     }, []);
 
     // Process recurring expenses - extracted to hook scope so it can run offline
-    const processRecurringExpenses = async (userId: string) => {
+    const processRecurringExpenses = useCallback(async (userId: string) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
-
-        const activeRecurring = await db.recurring_expenses
-            .where('active').equals(1 as any) // Dexie boolean mapping
-            .toArray(); // Filter in memory if needed, or use proper index
 
         // Dexie stores booleans as 1/0 sometimes depending on backend, but usually true/false works.
         // Let's just fetch all and filter.
@@ -38,7 +34,7 @@ export function useOfflineSync() {
         for (const recurring of allRecurring) {
             if (!recurring.active) continue;
 
-            let nextDue = new Date(recurring.next_due_date);
+            const nextDue = new Date(recurring.next_due_date);
             let modified = false;
 
             while (nextDue <= today) {
@@ -76,9 +72,9 @@ export function useOfflineSync() {
                 });
             }
         }
-    };
+    }, []);
 
-    const syncExpenses = async () => {
+    const syncExpenses = useCallback(async () => {
         if (!isOnline) return;
         setIsSyncing(true);
 
@@ -190,6 +186,7 @@ export function useOfflineSync() {
                     category_id: expense.category_id,
                     amount: expense.amount,
                     note: expense.note,
+                    items: expense.items, // Add items field
                     date: expense.date,
                     created_at: expense.created_at,
                     updated_at: expense.updated_at,
@@ -331,7 +328,7 @@ export function useOfflineSync() {
         } finally {
             setIsSyncing(false);
         }
-    };
+    }, [isOnline, processRecurringExpenses, supabase]);
 
     // Process recurring expenses on mount (works offline)
     useEffect(() => {
@@ -342,14 +339,14 @@ export function useOfflineSync() {
             }
         };
         checkRecurring();
-    }, []); // Runs once on mount
+    }, [processRecurringExpenses, supabase.auth]); // Runs once on mount
 
     // Auto-sync when coming online
     useEffect(() => {
         if (isOnline) {
             syncExpenses();
         }
-    }, [isOnline]);
+    }, [isOnline, syncExpenses]);
 
     return { isOnline, isSyncing, syncExpenses };
 }

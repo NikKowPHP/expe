@@ -19,6 +19,7 @@ export interface Expense {
     category_id: string;
     amount: number;
     note?: string;
+    items?: { description: string; amount: number }[];
     date: string; // ISO date string
     created_at: string;
     updated_at: string;

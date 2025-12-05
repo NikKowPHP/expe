@@ -1,7 +1,7 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { NextResponse } from 'next/server';
+import { GeminiClient } from '@/lib/gemini';
 
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+const client = new GeminiClient();
 
 export async function POST(req: Request) {
     try {
@@ -11,8 +11,6 @@ export async function POST(req: Request) {
             return NextResponse.json({ insight: "Please configure your Gemini API Key to get insights." });
         }
 
-        const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
-
         const prompt = `
       Analyze the following expense data and provide a brief, helpful insight (2-3 sentences).
       Focus on spending trends or anomalies.
@@ -21,9 +19,11 @@ export async function POST(req: Request) {
       ${JSON.stringify(expenses)}
     `;
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text();
+        const text = await client.generateContent(
+            prompt,
+            undefined,
+            { model: 'gemini-1.5-flash' }
+        );
 
         return NextResponse.json({ insight: text });
     } catch (error) {
