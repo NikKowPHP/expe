@@ -67,12 +67,24 @@ export function ExpenseDetailsModal({ expense, onClose, getCategoryById }: Expen
                         <div>
                             <label className="text-sm font-medium text-muted-foreground mb-2 block">Items</label>
                             <div className="bg-secondary/30 rounded-xl overflow-hidden">
-                                {expense.items.map((item, idx) => (
-                                    <div key={idx} className="flex justify-between items-center p-3 border-b border-border last:border-0">
-                                        <span className="font-medium">{item.description}</span>
-                                        <span>{formatCurrency(item.amount, currency)}</span>
-                                    </div>
-                                ))}
+                                {expense.items.map((item, idx) => {
+                                    const itemCategory = item.category_id ? getCategoryById(item.category_id) : undefined;
+                                    const ItemIcon = itemCategory ? getIconComponent(itemCategory.icon) : null;
+                                    
+                                    return (
+                                        <div key={idx} className="flex justify-between items-center p-3 border-b border-border last:border-0">
+                                            <div className="flex items-center gap-3">
+                                                {ItemIcon && item.category_id !== expense.category_id && (
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${itemCategory?.color || 'bg-primary/10'}`}>
+                                                        <ItemIcon className="w-4 h-4" />
+                                                    </div>
+                                                )}
+                                                <span className="font-medium">{item.description}</span>
+                                            </div>
+                                            <span>{formatCurrency(item.amount, currency)}</span>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}

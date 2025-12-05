@@ -33,6 +33,7 @@ export function AddExpenseWizard() {
         items: ReceiptItem[];
         merchant: string;
         date: string;
+        image: string;
     } | null>(null);
     const supabase = createClient();
     const categories = useLiveQuery(() => db.categories.toArray());
@@ -108,6 +109,7 @@ export function AddExpenseWizard() {
                         items: data.items,
                         merchant: data.merchant || '',
                         date: data.date || new Date().toISOString().split('T')[0],
+                        image: base64,
                     });
                     setStep(4);
                     setScanError(null);
@@ -128,7 +130,7 @@ export function AddExpenseWizard() {
         reader.readAsDataURL(file);
     };
 
-    const handleReceiptSave = async (items: ReceiptItem[], merchant: string, receiptDate: Date) => {
+    const handleReceiptSave = async (items: ReceiptItem[], merchant: string, receiptDate: Date, shouldSplit: boolean) => {
         if (!userId) return;
         if (!accountId) {
             alert('Please select an account before saving.');
@@ -165,33 +167,81 @@ export function AddExpenseWizard() {
         }
 
         // Group items by category
-        const itemsByCategory = new Map<string, ReceiptItem[]>();
-        
+        const itemsByCategory = new Map<string, typeof normalizedItems>();
         for (const item of normalizedItems) {
             const current = itemsByCategory.get(item.category_id) || [];
             current.push(item);
             itemsByCategory.set(item.category_id, current);
         }
 
-        const newExpenses = Array.from(itemsByCategory.entries()).map(([catId, catItems]) => {
-            const totalAmount = catItems.reduce((sum, item) => sum + item.amount, 0);
+        if (shouldSplit) {
+            // OPTION 1: Split into multiple expense entries per category
+            const newExpenses = Array.from(itemsByCategory.entries()).map(([catId, catItems]) => {
+                const totalAmount = catItems.reduce((sum, item) => sum + item.amount, 0);
+                
+                return {
+                    id: uuidv4(),
+                    user_id: userId,
+                    account_id: accountId,
+                    category_id: catId,
+                    amount: totalAmount,
+                    note: merchant, // Could append category name if needed
+                    items: catItems.map(i => ({ 
+                        description: i.description, 
+                        amount: i.amount,
+                        category_id: catId
+                    })),
+                    date: receiptDate.toISOString(),
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                    sync_status: 'pending' as const,
+                };
+            });
+
+            await db.expenses.bulkAdd(newExpenses);
+
+        } else {
+            // OPTION 2: Single expense with grouped items (Default)
+            const totalAmount = normalizedItems.reduce((sum, item) => sum + item.amount, 0);
+
+            // Determine primary category (highest total)
+            const categoryTotals = new Map<string, number>();
+            for (const [catId, catItems] of itemsByCategory.entries()) {
+                const total = catItems.reduce((sum, i) => sum + i.amount, 0);
+                categoryTotals.set(catId, total);
+            }
+
+            let primaryCategoryId = normalizedItems[0].category_id;
+            let maxTotal = 0;
             
-            return {
+            for (const [catId, total] of categoryTotals.entries()) {
+                if (total > maxTotal) {
+                    maxTotal = total;
+                    primaryCategoryId = catId;
+                }
+            }
+
+            const newExpense = {
                 id: uuidv4(),
                 user_id: userId,
                 account_id: accountId,
-                category_id: catId,
+                category_id: primaryCategoryId,
                 amount: totalAmount,
                 note: merchant,
-                items: catItems.map(i => ({ description: i.description, amount: i.amount })),
+                items: normalizedItems.map(i => ({ 
+                    description: i.description, 
+                    amount: i.amount,
+                    category_id: i.category_id 
+                })),
                 date: receiptDate.toISOString(),
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
                 sync_status: 'pending' as const,
             };
-        });
 
-        await db.expenses.bulkAdd(newExpenses);
+            await db.expenses.add(newExpense);
+        }
+
         router.push('/');
     };
 
@@ -276,6 +326,7 @@ export function AddExpenseWizard() {
                         items={scannedData.items}
                         merchant={scannedData.merchant}
                         date={scannedData.date}
+                        imageUrl={scannedData.image}
                         categories={categories}
                         accounts={accounts || []}
                         accountId={accountId}

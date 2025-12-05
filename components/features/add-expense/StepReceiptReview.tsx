@@ -15,11 +15,12 @@ interface StepReceiptReviewProps {
     items: ReceiptItem[];
     merchant: string;
     date: string;
+    imageUrl: string;
     categories: { id: string; name: string }[];
     accounts: { id: string; name: string }[];
     accountId: string;
     onChangeAccount: (id: string) => void;
-    onSave: (items: ReceiptItem[], merchant: string, date: Date) => void;
+    onSave: (items: ReceiptItem[], merchant: string, date: Date, splitByCategory: boolean) => void;
     onCancel: () => void;
 }
 
@@ -27,6 +28,7 @@ export function StepReceiptReview({
     items: initialItems,
     merchant,
     date,
+    imageUrl,
     categories,
     accounts,
     accountId,
@@ -37,6 +39,7 @@ export function StepReceiptReview({
     const [items, setItems] = useState(initialItems);
     const [receiptDate, setReceiptDate] = useState(date);
     const [storeName, setStoreName] = useState(merchant);
+    const [splitByCategory, setSplitByCategory] = useState(false);
 
     const removeItem = (index: number) => {
         setItems(items.filter((_, i) => i !== index));
@@ -54,7 +57,7 @@ export function StepReceiptReview({
         <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="fixed inset-0 z-60 bg-background flex flex-col p-4 pb-24 overflow-y-auto"
+            className="fixed inset-0 z-[60] bg-background flex flex-col p-4 pb-24 overflow-y-auto"
         >
             <div className="flex items-center mb-6">
                 <Button variant="ghost" onClick={onCancel} className="mr-2">
@@ -62,6 +65,12 @@ export function StepReceiptReview({
                 </Button>
                 <h2 className="text-xl font-bold">Review Receipt</h2>
             </div>
+
+            {imageUrl && (
+                <div className="mb-6 rounded-xl overflow-hidden border border-border">
+                    <img src={imageUrl} alt="Receipt" className="w-full object-contain max-h-[300px] bg-black/5" />
+                </div>
+            )}
 
             <div className="bg-secondary/50 p-4 rounded-xl mb-6 space-y-3">
                 <div className="flex items-center gap-2">
@@ -133,14 +142,25 @@ export function StepReceiptReview({
                 ))}
             </div>
 
-            <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t border-border z-60">
+            <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t border-border z-[60]">
+                <div className="flex items-center mb-4 px-2 space-x-2">
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                        <input 
+                            type="checkbox" 
+                            checked={splitByCategory} 
+                            onChange={(e) => setSplitByCategory(e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                        />
+                        <span className="text-sm font-medium">Split by category</span>
+                    </label>
+                </div>
                 <div className="flex justify-between items-center mb-4 px-2">
                     <span className="text-muted-foreground">Total items: {items.length}</span>
                     <span className="text-xl font-bold">${total.toFixed(2)}</span>
                 </div>
                 <Button
                     className="w-full h-12 text-lg rounded-xl"
-                    onClick={() => onSave(items, storeName, new Date(receiptDate))}
+                    onClick={() => onSave(items, storeName, new Date(receiptDate), splitByCategory)}
                     disabled={items.length === 0}
                 >
                     <Check className="w-5 h-5 mr-2" />
