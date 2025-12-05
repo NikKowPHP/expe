@@ -17,6 +17,7 @@ interface ReceiptItem {
     amount: number;
     category_id: string;
     subcategory_name?: string;
+    new_category_name?: string;
 }
 
 export function AddExpenseWizard() {
@@ -29,6 +30,7 @@ export function AddExpenseWizard() {
     const [userId, setUserId] = useState<string | null>(null);
     const [isScanning, setIsScanning] = useState(false);
     const [scanError, setScanError] = useState<string | null>(null);
+    const [tempCategories, setTempCategories] = useState<{ id: string; name: string }[]>([]);
 
     const [scannedData, setScannedData] = useState<{
         items: ReceiptItem[];
@@ -113,8 +115,30 @@ export function AddExpenseWizard() {
                 const data = await res.json();
                 
                 if (data.items && Array.isArray(data.items)) {
+                    // Handle new category suggestions
+                    const newTempCategories: { id: string; name: string }[] = [];
+                    const processedItems = data.items.map((item: ReceiptItem & { new_category_name?: string }) => {
+                        if (item.new_category_name && !item.category_id) {
+                            // Check if we already created a temp category for this name in this batch
+                            let tempCat = newTempCategories.find(c => c.name === item.new_category_name);
+                            if (!tempCat) {
+                                tempCat = {
+                                    id: uuidv4(),
+                                    name: item.new_category_name
+                                };
+                                newTempCategories.push(tempCat);
+                            }
+                            return {
+                                ...item,
+                                category_id: tempCat.id
+                            };
+                        }
+                        return item;
+                    });
+
+                    setTempCategories(newTempCategories);
                     setScannedData({
-                        items: data.items,
+                        items: processedItems,
                         merchant: data.merchant || '',
                         date: data.date || new Date().toISOString().split('T')[0],
                         image: base64,
@@ -144,7 +168,10 @@ export function AddExpenseWizard() {
             alert('Please select an account before saving.');
             return;
         }
-        if (!categories || categories.length === 0) {
+        
+        const allCategories = [...(categories || []), ...tempCategories];
+
+        if (!allCategories || allCategories.length === 0) {
             alert('Please set up categories before saving expenses.');
             return;
         }
@@ -153,7 +180,28 @@ export function AddExpenseWizard() {
             return;
         }
 
-        const categorySet = new Set(categories.map((c) => c.id));
+        // Save any temporary categories that were used
+        if (tempCategories.length > 0) {
+            const usedTempCatIds = new Set(items.map(i => i.category_id));
+            const categoriesToCreate = tempCategories.filter(c => usedTempCatIds.has(c.id)).map(c => ({
+                id: c.id,
+                user_id: userId,
+                name: c.name,
+                type: 'expense' as const,
+                icon: 'file',
+                color: '#808080',
+                is_default: false,
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                sync_status: 'pending' as const
+            }));
+
+            if (categoriesToCreate.length > 0) {
+                await db.categories.bulkAdd(categoriesToCreate);
+            }
+        }
+
+        const categorySet = new Set(allCategories.map((c) => c.id));
         const normalizedItems = items.map((item) => ({
             ...item,
             description: item.description?.trim() || 'Untitled item',
@@ -373,13 +421,14 @@ export function AddExpenseWizard() {
                         merchant={scannedData.merchant}
                         date={scannedData.date}
                         imageUrl={scannedData.image}
-                        categories={categories}
+                        categories={[...categories, ...tempCategories]}
                         accounts={accounts || []}
                         accountId={accountId}
                         onChangeAccount={setAccountId}
                         onSave={handleReceiptSave}
                         onCancel={() => {
                             setScannedData(null);
+                            setTempCategories([]);
                             setStep(1);
                         }}
                     />

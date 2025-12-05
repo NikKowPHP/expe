@@ -87,19 +87,24 @@ export function useCategoryMutations() {
       throw new Error('Cannot delete default categories');
     }
 
-    // Delete from local database
-    await db.categories.delete(id);
-
-    // Try to delete from server if online
+    // If online, try to delete from server first to check for constraints
     if (navigator.onLine) {
-      try {
-        await fetch(`/api/categories/${id}`, {
-          method: 'DELETE',
-        });
-      } catch (error) {
-        console.error('Failed to delete category from server:', error);
+      const response = await fetch(`/api/categories/${id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        // Check for foreign key constraint violation
+        if (data.error && data.error.includes('foreign key constraint')) {
+           throw new Error('Cannot delete this category because it contains expenses. Please reassign or delete the expenses first.');
+        }
+        throw new Error(data.error || 'Failed to delete category');
       }
     }
+
+    // If server delete succeeded or we are offline, delete locally
+    await db.categories.delete(id);
   };
 
   return {

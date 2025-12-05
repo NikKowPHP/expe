@@ -71,6 +71,13 @@ export async function DELETE(
     .eq('user_id', user.id);
 
   if (error) {
+    // Check for foreign key constraint violation
+    if (error.code === '23503') { // Postgres code for foreign_key_violation
+      return NextResponse.json(
+        { error: 'Cannot delete this category because it contains expenses. Please reassign or delete the expenses first.' },
+        { status: 409 }
+      );
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 

@@ -57,8 +57,10 @@ Then, extract EVERY single purchased item as a separate line item.
 For each item:
 1. Extract the Item Name (description).
 2. Extract the Item Price (amount). Ensure you parse commas as decimals (e.g., 3,99 becomes 3.99).
-3. Select the most appropriate Category ID from the provided list.
-4. Select the most appropriate "Subcategory Name" from the list of existing subcategories for the chosen Category ID. 
+3. Select the most appropriate Category from the provided list.
+   - If an existing category fits well, use its "category_id".
+   - If NO existing category fits, provide a short, generic "new_category_name" (e.g., "Electronics", "Pet Supplies") and set "category_id" to null.
+4. Select the most appropriate "Subcategory Name" from the list of existing subcategories for the chosen Category (if any). 
    - If an existing subcategory fits well, use its EXACT name.
    - If NO existing subcategory fits, create a new, short, generic "Subcategory Name" (e.g., from "Whole Grain Bread 500g" extract "Bread").
 
@@ -77,13 +79,15 @@ Return ONLY a JSON object with this structure:
       "description": "Milk", 
       "amount": 2.99, 
       "category_id": "uuid...",
+      "new_category_name": null,
       "subcategory_name": "Dairy" 
     },
     { 
-      "description": "Fancy Bread", 
-      "amount": 1.50, 
-      "category_id": "uuid...",
-      "subcategory_name": "Bread" 
+      "description": "New TV", 
+      "amount": 299.99, 
+      "category_id": null,
+      "new_category_name": "Electronics",
+      "subcategory_name": "TVs" 
     }
   ]
 }
