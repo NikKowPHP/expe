@@ -7,9 +7,7 @@ export async function POST(req: Request) {
     try {
         const { expenses } = await req.json();
 
-        if (!process.env.GEMINI_API_KEY) {
-            return NextResponse.json({ insight: "Please configure your Gemini API Key to get insights." });
-        }
+
 
         const prompt = `
       Analyze the following expense data and provide a brief, helpful insight (2-3 sentences).

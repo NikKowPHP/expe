@@ -7,9 +7,7 @@ export async function POST(req: Request) {
   try {
     const { note, categories } = await req.json();
 
-    if (!process.env.GEMINI_API_KEY) {
-      return NextResponse.json({ category_id: null });
-    }
+
 
     if (!note || !categories) {
       return NextResponse.json({ category_id: null }, { status: 400 });

@@ -7,9 +7,7 @@ export async function POST(req: Request) {
     try {
         const { descriptions, categories } = await req.json();
 
-        if (!process.env.GEMINI_API_KEY) {
-            return NextResponse.json({ mapping: {} });
-        }
+
 
         // Create a clean list of categories for the AI
         const categoryList = categories.map((c: { id: string; name: string }) => ({ id: c.id, name: c.name }));

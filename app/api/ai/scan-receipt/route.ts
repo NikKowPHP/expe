@@ -5,12 +5,7 @@ const client = new GeminiClient();
 
 export async function POST(req: Request) {
   try {
-    if (!process.env.GEMINI_API_KEY) {
-      return NextResponse.json(
-        { error: 'Gemini API Key not configured' },
-        { status: 500 }
-      );
-    }
+
 
     const { image, categories } = await req.json();
 
