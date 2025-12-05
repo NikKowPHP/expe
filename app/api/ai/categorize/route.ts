@@ -29,7 +29,7 @@ Do not include any other text or JSON formatting.
     const text = await client.generateContent(
       prompt,
       undefined,
-      { model: 'gemini-flash-latest' }
+      { model: process.env.GEMINI_LARGE_MODEL || 'gemini-1.5-flash' }
     );
 
     const result = (text ?? '').trim().replace(/['"]/g, '');

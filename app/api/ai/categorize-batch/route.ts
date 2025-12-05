@@ -29,7 +29,7 @@ export async function POST(req: Request) {
             prompt,
             undefined,
             { 
-                model: 'gemini-1.5-flash',
+                model: process.env.GEMINI_LARGE_MODEL,
                 generationConfig: { responseMimeType: "application/json" }
             }
         );

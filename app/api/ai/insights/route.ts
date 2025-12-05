@@ -20,7 +20,7 @@ export async function POST(req: Request) {
         const text = await client.generateContent(
             prompt,
             undefined,
-            { model: 'gemini-1.5-flash' }
+            { model: process.env.GEMINI_LARGE_MODEL}
         );
 
         return NextResponse.json({ insight: text });

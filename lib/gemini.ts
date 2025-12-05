@@ -109,7 +109,7 @@ export class GeminiClient {
     for (const apiKey of keys) {
       try {
         return await withRetry(async () => {
-          const model = options.model || 'gemini-1.5-flash';
+          const model = options.model;
           const url = `${BASE_URL}/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
           const parts: Record<string, unknown>[] = [];

@@ -92,7 +92,7 @@ Return ONLY a JSON object with this structure:
     const text = await client.generateContent(
       prompt,
       { uri: fileUri, mimeType },
-      { model: 'gemini-flash-latest' }
+      { model: process.env.GEMINI_LARGE_MODEL || 'gemini-1.5-flash' }
     );
 
     const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
