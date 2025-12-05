@@ -15,28 +15,61 @@ export default function AnalyticsPage() {
     const expenses = useLiveQuery(() => db.expenses.filter(e => !e.deleted_at).toArray());
     const categories = useLiveQuery(() => db.categories.toArray());
     const { budgetStatuses } = useBudgets();
+    const subcategories = useLiveQuery(() => db.subcategories.toArray());
     const [insight, setInsight] = useState('');
     const [loadingInsight, setLoadingInsight] = useState(false);
+    const [selectedCategory, setSelectedCategory] = useState<{id: string, name: string} | null>(null);
 
-    if (!expenses || !categories) return <div className="p-6">Loading...</div>;
+    if (!expenses || !categories || !subcategories) return <div className="p-6">Loading...</div>;
 
     // Check for exceeded budgets
     const exceededBudgets = budgetStatuses.filter(b => b.remaining < 0);
 
-    // Create a map of category_id to category title
+    // Create a map of category_id to category name
     const categoryMap = categories.reduce((acc, cat) => {
         acc[cat.id] = cat.name;
         return acc;
     }, {} as Record<string, string>);
 
-    // Group by category
+    // Group by category (keep ID)
     const byCategory = expenses.reduce((acc, curr) => {
-        const categoryName = categoryMap[curr.category_id] || 'Unknown';
-        acc[categoryName] = (acc[categoryName] || 0) + curr.amount;
+        const catId = curr.category_id;
+        acc[catId] = (acc[catId] || 0) + curr.amount;
         return acc;
     }, {} as Record<string, number>);
 
-    const pieData = Object.entries(byCategory).map(([name, value]) => ({ name, value }));
+    const pieData = Object.entries(byCategory).map(([id, value]) => ({ 
+        id, 
+        name: categoryMap[id] || 'Unknown', 
+        value 
+    }));
+
+    // Aggregate by Subcategory
+    const subcategoryMap = subcategories?.reduce((acc, sub) => {
+        acc[sub.id] = sub.name;
+        return acc;
+    }, {} as Record<string, string>) || {};
+
+    const bySubcategory = expenses.reduce((acc, curr) => {
+        // Filter by selected category if set
+        if (selectedCategory && curr.category_id !== selectedCategory.id) return acc;
+
+        if (curr.items && curr.items.length > 0) {
+            curr.items.forEach(item => {
+                if (item.subcategory_id) {
+                    const subName = subcategoryMap[item.subcategory_id] || 'Unknown';
+                    acc[subName] = (acc[subName] || 0) + item.amount;
+                }
+            });
+        }
+        return acc;
+    }, {} as Record<string, number>);
+
+    const subcategoryData = Object.entries(bySubcategory)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 10); // Top 10 subcategories
+
 
     const handleAudit = async () => {
         setLoadingInsight(true);
@@ -125,7 +158,7 @@ export default function AnalyticsPage() {
                 animate={{ opacity: 1, scale: 1 }}
                 className="bg-card p-6 rounded-3xl shadow-sm border border-border"
             >
-                <h2 className="text-lg font-semibold mb-4">Spending by Category</h2>
+                <h2 className="text-lg font-semibold mb-4">Spending by Category <span className="text-sm font-normal text-muted-foreground ml-2">(Tap slice to filter details)</span></h2>
                 <div className="h-80">
                     <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
@@ -138,9 +171,22 @@ export default function AnalyticsPage() {
                                 fill="#8884d8"
                                 paddingAngle={5}
                                 dataKey="value"
+                                onClick={(data) => {
+                                    if (selectedCategory?.id === data.id) {
+                                        setSelectedCategory(null); // Deselect
+                                    } else {
+                                        setSelectedCategory({ id: data.id, name: data.name });
+                                    }
+                                }}
+                                className="cursor-pointer focus:outline-none"
                             >
                                 {pieData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                    <Cell 
+                                        key={`cell-${index}`} 
+                                        fill={COLORS[index % COLORS.length]} 
+                                        stroke={selectedCategory?.id === entry.id ? '#000' : 'none'}
+                                        strokeWidth={2}
+                                    />
                                 ))}
                             </Pie>
                             <Tooltip />
@@ -153,6 +199,27 @@ export default function AnalyticsPage() {
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: 0.1 }}
+                className="bg-card p-6 rounded-3xl shadow-sm border border-border"
+            >
+                <h2 className="text-lg font-semibold mb-4">
+                    {selectedCategory ? `Top Subcategories in ${selectedCategory.name}` : 'Top Spending by Subcategory (All)'}
+                </h2>
+                <div className="h-80">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={subcategoryData} layout="vertical">
+                            <XAxis type="number" hide />
+                            <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 12}} />
+                            <Tooltip formatter={(value: number) => value.toFixed(2)} />
+                            <Bar dataKey="value" fill="#82ca9d" radius={[0, 4, 4, 0]} label={{ position: 'right' }} />
+                        </BarChart>
+                    </ResponsiveContainer>
+                </div>
+            </motion.div>
+
+            <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.2 }}
                 className="bg-card p-6 rounded-3xl shadow-sm border border-border"
             >
                 <h2 className="text-lg font-semibold mb-4">Monthly Trends</h2>

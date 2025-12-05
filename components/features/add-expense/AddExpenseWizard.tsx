@@ -16,6 +16,7 @@ interface ReceiptItem {
     description: string;
     amount: number;
     category_id: string;
+    subcategory_name?: string;
 }
 
 export function AddExpenseWizard() {
@@ -166,9 +167,45 @@ export function AddExpenseWizard() {
             return;
         }
 
-        // Group items by category
-        const itemsByCategory = new Map<string, typeof normalizedItems>();
-        for (const item of normalizedItems) {
+        // Create subcategories if needed and map items
+        const processedItems = await Promise.all(normalizedItems.map(async (item) => {
+            let subcategoryId = undefined;
+
+            if (item.subcategory_name && item.subcategory_name.trim()) {
+                const subName = item.subcategory_name.trim();
+                
+                // Check if subcategory exists for this category
+                const existingSub = await db.subcategories
+                    .where({ user_id: userId, category_id: item.category_id })
+                    .filter(s => s.name.toLowerCase() === subName.toLowerCase())
+                    .first();
+
+                if (existingSub) {
+                    subcategoryId = existingSub.id;
+                } else {
+                    // Create new subcategory
+                    const newSubId = uuidv4();
+                    await db.subcategories.add({
+                        id: newSubId,
+                        user_id: userId,
+                        category_id: item.category_id,
+                        name: subName,
+                        created_at: new Date().toISOString(),
+                        sync_status: 'pending',
+                    });
+                    subcategoryId = newSubId;
+                }
+            }
+
+            return {
+                ...item,
+                subcategory_id: subcategoryId
+            };
+        }));
+
+        // Group items by category (using processed items with subcategory_ids)
+        const itemsByCategory = new Map<string, typeof processedItems>();
+        for (const item of processedItems) {
             const current = itemsByCategory.get(item.category_id) || [];
             current.push(item);
             itemsByCategory.set(item.category_id, current);
@@ -185,11 +222,12 @@ export function AddExpenseWizard() {
                     account_id: accountId,
                     category_id: catId,
                     amount: totalAmount,
-                    note: merchant, // Could append category name if needed
+                    note: merchant,
                     items: catItems.map(i => ({ 
                         description: i.description, 
                         amount: i.amount,
-                        category_id: catId
+                        category_id: catId,
+                        subcategory_id: i.subcategory_id 
                     })),
                     date: receiptDate.toISOString(),
                     created_at: new Date().toISOString(),
@@ -202,7 +240,7 @@ export function AddExpenseWizard() {
 
         } else {
             // OPTION 2: Single expense with grouped items (Default)
-            const totalAmount = normalizedItems.reduce((sum, item) => sum + item.amount, 0);
+            const totalAmount = processedItems.reduce((sum, item) => sum + item.amount, 0);
 
             // Determine primary category (highest total)
             const categoryTotals = new Map<string, number>();
@@ -211,7 +249,7 @@ export function AddExpenseWizard() {
                 categoryTotals.set(catId, total);
             }
 
-            let primaryCategoryId = normalizedItems[0].category_id;
+            let primaryCategoryId = processedItems[0].category_id;
             let maxTotal = 0;
             
             for (const [catId, total] of categoryTotals.entries()) {
@@ -228,10 +266,11 @@ export function AddExpenseWizard() {
                 category_id: primaryCategoryId,
                 amount: totalAmount,
                 note: merchant,
-                items: normalizedItems.map(i => ({ 
+                items: processedItems.map(i => ({ 
                     description: i.description, 
                     amount: i.amount,
-                    category_id: i.category_id 
+                    category_id: i.category_id,
+                    subcategory_id: i.subcategory_id
                 })),
                 date: receiptDate.toISOString(),
                 created_at: new Date().toISOString(),

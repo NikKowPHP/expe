@@ -19,7 +19,7 @@ export interface Expense {
     category_id: string;
     amount: number;
     note?: string;
-    items?: { description: string; amount: number; category_id?: string }[];
+    items?: { description: string; amount: number; category_id?: string; subcategory_id?: string }[];
     date: string; // ISO date string
     created_at: string;
     updated_at: string;
@@ -52,6 +52,15 @@ export interface Category {
     sync_status: 'synced' | 'pending' | 'error';
 }
 
+export interface Subcategory {
+    id: string;
+    user_id: string;
+    name: string;
+    category_id: string;
+    created_at: string;
+    sync_status: 'synced' | 'pending' | 'error';
+}
+
 export interface Budget {
     id: string;
     user_id: string;
@@ -67,15 +76,17 @@ export class ExpenseDatabase extends Dexie {
     expenses!: Table<Expense>;
     recurring_expenses!: Table<RecurringExpense>;
     categories!: Table<Category>;
+    subcategories!: Table<Subcategory>;
     budgets!: Table<Budget>;
     accounts!: Table<Account>;
 
     constructor() {
         super('ExpenseTrackerDB');
-        this.version(6).stores({
+        this.version(7).stores({
             expenses: 'id, user_id, category_id, account_id, date, sync_status, deleted_at', // id is primary key
             recurring_expenses: 'id, user_id, category_id, next_due_date, active, sync_status',
             categories: 'id, user_id, type, sync_status',
+            subcategories: 'id, user_id, category_id, name, sync_status',
             budgets: 'id, user_id, category_id, [month+year], sync_status',
             accounts: 'id, user_id, sync_status'
         });

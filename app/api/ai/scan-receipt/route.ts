@@ -57,6 +57,7 @@ For each item:
 1. Extract the Item Name (description).
 2. Extract the Item Price (amount). Ensure you parse commas as decimals (e.g., 3,99 becomes 3.99).
 3. Select the most appropriate Category ID from the provided list.
+4. Extract a generic "Subcategory Name" (e.g., from "Whole Grain Bread 500g" extract "Bread"). This should be a short, general description of the product.
 
 Categories List:
 ${JSON.stringify(categoryList)}
@@ -66,8 +67,18 @@ Return ONLY a JSON object with this structure:
   "merchant": "Store Name",
   "date": "YYYY-MM-DD",
   "items": [
-    { "description": "Milk", "amount": 2.99, "category_id": "uuid..." },
-    { "description": "Bread", "amount": 1.50, "category_id": "uuid..." }
+    { 
+      "description": "Milk", 
+      "amount": 2.99, 
+      "category_id": "uuid...",
+      "subcategory_name": "Dairy" 
+    },
+    { 
+      "description": "Bread", 
+      "amount": 1.50, 
+      "category_id": "uuid...",
+      "subcategory_name": "Bread" 
+    }
   ]
 }
     `.trim();

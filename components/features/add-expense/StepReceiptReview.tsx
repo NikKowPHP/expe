@@ -9,6 +9,7 @@ interface ReceiptItem {
     description: string;
     amount: number;
     category_id: string;
+    subcategory_name?: string;
 }
 
 interface StepReceiptReviewProps {
@@ -108,19 +109,32 @@ export function StepReceiptReview({
             <div className="space-y-3">
                 {items.map((item, idx) => (
                     <div key={idx} className="bg-card border border-border p-3 rounded-xl flex flex-col gap-2">
-                        <div className="flex justify-between items-start">
+                        <div className="flex flex-col gap-1 w-full">
+                            <div className="flex justify-between items-start">
+                                <input
+                                    value={item.description}
+                                    onChange={(e) => {
+                                        const newItems = [...items];
+                                        newItems[idx].description = e.target.value;
+                                        setItems(newItems);
+                                    }}
+                                    className="font-medium bg-transparent outline-none w-full"
+                                    placeholder="Item description"
+                                />
+                                <button onClick={() => removeItem(idx)} className="text-destructive p-1">
+                                    <Trash2 className="w-4 h-4" />
+                                </button>
+                            </div>
                             <input
-                                value={item.description}
+                                value={item.subcategory_name || ''}
                                 onChange={(e) => {
                                     const newItems = [...items];
-                                    newItems[idx].description = e.target.value;
+                                    newItems[idx].subcategory_name = e.target.value;
                                     setItems(newItems);
                                 }}
-                                className="font-medium bg-transparent outline-none w-full"
+                                className="text-xs text-muted-foreground bg-transparent outline-none w-full border-b border-transparent hover:border-gray-700 focus:border-primary"
+                                placeholder="Subcategory (e.g., Bread)"
                             />
-                            <button onClick={() => removeItem(idx)} className="text-destructive p-1">
-                                <Trash2 className="w-4 h-4" />
-                            </button>
                         </div>
 
                         <div className="flex justify-between items-center mt-1">

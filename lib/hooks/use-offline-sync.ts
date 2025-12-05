@@ -105,6 +105,39 @@ export function useOfflineSync() {
                 }
             }
 
+            // --- 0.1 Sync Subcategories ---
+            // Pull
+            const { data: remoteSubcategories, error: subcategoriesError } = await supabase
+                .from('subcategories')
+                .select('*')
+                .eq('user_id', userId);
+
+            if (remoteSubcategories && !subcategoriesError) {
+                for (const remoteSub of remoteSubcategories) {
+                    await db.subcategories.put({
+                        ...remoteSub,
+                        sync_status: 'synced',
+                    });
+                }
+            }
+
+            // Push pending subcategories
+            const pendingSubcategories = await db.subcategories.where('sync_status').equals('pending').toArray();
+            for (const sub of pendingSubcategories) {
+                try {
+                    const { error } = await supabase.from('subcategories').upsert({
+                        id: sub.id,
+                        user_id: sub.user_id,
+                        name: sub.name,
+                        category_id: sub.category_id,
+                        created_at: sub.created_at,
+                    });
+                    if (!error) await db.subcategories.update(sub.id, { sync_status: 'synced' });
+                } catch (error) {
+                    console.error('Failed to sync subcategory:', sub.id, error);
+                }
+            }
+
             // Push pending categories
             const pendingCategories = await db.categories.where('sync_status').equals('pending').toArray();
             for (const category of pendingCategories) {
