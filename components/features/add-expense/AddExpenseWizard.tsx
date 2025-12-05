@@ -1,14 +1,22 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { StepAmount } from './StepAmount';
 import { StepCategory } from './StepCategory';
 import { StepDetails } from './StepDetails';
+import { StepReceiptReview } from './StepReceiptReview';
 import { db } from '@/lib/db/db';
 import { createClient } from '@/lib/supabase/client';
 import { v4 as uuidv4 } from 'uuid';
+import { useLiveQuery } from 'dexie-react-hooks';
+
+interface ReceiptItem {
+    description: string;
+    amount: number;
+    category_id: string;
+}
 
 export function AddExpenseWizard() {
     const router = useRouter();
@@ -17,10 +25,17 @@ export function AddExpenseWizard() {
     const [transactionType, setTransactionType] = useState<'expense' | 'income'>('expense');
     const [accountId, setAccountId] = useState<string>(''); // Default to empty, will select default account
     const [categoryId, setCategoryId] = useState('');
-    const [note, setNote] = useState('');
-    const [date, setDate] = useState(new Date());
     const [userId, setUserId] = useState<string | null>(null);
+    const [isScanning, setIsScanning] = useState(false);
+    const [scanError, setScanError] = useState<string | null>(null);
+
+    const [scannedData, setScannedData] = useState<{
+        items: ReceiptItem[];
+        merchant: string;
+        date: string;
+    } | null>(null);
     const supabase = createClient();
+    const categories = useLiveQuery(() => db.categories.toArray());
 
     useEffect(() => {
         // Get authenticated user
@@ -39,7 +54,7 @@ export function AddExpenseWizard() {
             }
         };
         getUser();
-    }, []);
+    }, [supabase]);
 
     const handleAmountSubmit = (value: string, type: 'expense' | 'income', accId: string) => {
         setAmount(value);
@@ -61,61 +76,111 @@ export function AddExpenseWizard() {
         // For now, let's just log
         console.log('Scanning receipt...');
 
+        if (!categories || categories.length === 0) {
+            setScanError('Please create at least one category before scanning receipts.');
+            return;
+        }
+
+        setIsScanning(true);
+        setScanError(null);
+
         const reader = new FileReader();
         reader.onloadend = async () => {
             const base64 = reader.result as string;
             
             try {
                 // Fetch categories for AI context
-                const categories = await db.categories.toArray();
-
                 const res = await fetch('/api/ai/scan-receipt', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ image: base64, categories }),
                 });
 
+                if (!res.ok) {
+                    throw new Error('Failed to scan receipt');
+                }
+
                 const data = await res.json();
                 
-                if (data.amount) setAmount(data.amount.toString());
-                if (data.date) setDate(new Date(data.date));
-                if (data.note) setNote(data.note);
-                if (data.category_id) setCategoryId(data.category_id);
-
-                // If we got everything, maybe jump to details?
-                // Or just fill the amount and let user verify.
-                // Let's fill amount and move to next step if valid
-                if (data.amount) {
-                    setStep(2); // Move to Category
-                    // If category is also found, maybe move to Details?
-                    // But StepCategory expects user input. 
-                    // Let's just set the state. The user will see the amount pre-filled if they go back?
-                    // Actually, StepAmount is currently active. If we update amount, it should reflect.
-                    // But we want to auto-advance if successful.
-                    
-                    // Better UX:
-                    // 1. Upload
-                    // 2. Show spinner
-                    // 3. Populate fields
-                    // 4. If category found, skip to Details?
-                    if (data.category_id) {
-                        setStep(3);
-                    } else {
-                        setStep(2);
-                    }
+                if (data.items && Array.isArray(data.items)) {
+                    setScannedData({
+                        items: data.items,
+                        merchant: data.merchant || '',
+                        date: data.date || new Date().toISOString().split('T')[0],
+                    });
+                    setStep(4);
+                    setScanError(null);
+                } else if (data.amount) {
+                    setAmount(data.amount.toString());
+                    if (data.category_id) setCategoryId(data.category_id);
+                    setStep(data.category_id ? 3 : 2);
+                    setScanError(null);
                 }
             } catch (error) {
                 console.error('Scan failed', error);
-                alert('Failed to scan receipt');
+                setScanError('Failed to scan receipt. Please try again.');
+            } finally {
+                setIsScanning(false);
+                reader.abort();
             }
         };
         reader.readAsDataURL(file);
     };
 
-    const handleDetailsSubmit = async (finalNote: string, finalDate: Date, isRecurring: boolean, frequency: 'daily' | 'weekly' | 'monthly' | 'yearly') => {
-        setNote(finalNote);
-        setDate(finalDate);
+    const handleReceiptSave = async (items: ReceiptItem[], merchant: string, receiptDate: Date) => {
+        if (!userId) return;
+        if (!accountId) {
+            alert('Please select an account before saving.');
+            return;
+        }
+        if (!categories || categories.length === 0) {
+            alert('Please set up categories before saving expenses.');
+            return;
+        }
+        if (!items || items.length === 0) {
+            alert('No items to save.');
+            return;
+        }
 
+        const categorySet = new Set(categories.map((c) => c.id));
+        const normalizedItems = items.map((item) => ({
+            ...item,
+            description: item.description?.trim() || 'Untitled item',
+            amount: Number(item.amount),
+        }));
+
+        const invalidItems = normalizedItems.filter(
+            (item) =>
+                !item.description ||
+                Number.isNaN(item.amount) ||
+                item.amount <= 0 ||
+                !item.category_id ||
+                !categorySet.has(item.category_id)
+        );
+
+        if (invalidItems.length > 0) {
+            alert('Please fix invalid receipt items (description, category, or amount) before saving.');
+            return;
+        }
+
+        const newExpenses = items.map((item) => ({
+            id: uuidv4(),
+            user_id: userId,
+            account_id: accountId,
+            category_id: item.category_id,
+            amount: item.amount,
+            note: `${merchant} - ${item.description}`,
+            date: receiptDate.toISOString(),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            sync_status: 'pending' as const,
+        }));
+
+        await db.expenses.bulkAdd(newExpenses);
+        router.push('/');
+    };
+
+    const handleDetailsSubmit = async (finalNote: string, finalDate: Date, isRecurring: boolean, frequency: 'daily' | 'weekly' | 'monthly' | 'yearly') => {
         if (!userId) {
             console.error('No user ID available');
             return;
@@ -171,7 +236,13 @@ export function AddExpenseWizard() {
         <div className="h-full flex flex-col">
             <AnimatePresence mode="wait">
                 {step === 1 && (
-                    <StepAmount key="step1" onNext={handleAmountSubmit} onScan={handleScanReceipt} />
+                    <StepAmount
+                        key="step1"
+                        onNext={handleAmountSubmit}
+                        onScan={handleScanReceipt}
+                        isScanning={isScanning}
+                        scanError={scanError}
+                    />
                 )}
                 {step === 2 && (
                     <StepCategory 
@@ -183,6 +254,20 @@ export function AddExpenseWizard() {
                 )}
                 {step === 3 && (
                     <StepDetails key="step3" onSubmit={handleDetailsSubmit} onBack={() => setStep(2)} />
+                )}
+                {step === 4 && scannedData && categories && (
+                    <StepReceiptReview
+                        key="step4"
+                        items={scannedData.items}
+                        merchant={scannedData.merchant}
+                        date={scannedData.date}
+                        categories={categories}
+                        onSave={handleReceiptSave}
+                        onCancel={() => {
+                            setScannedData(null);
+                            setStep(1);
+                        }}
+                    />
                 )}
             </AnimatePresence>
         </div>

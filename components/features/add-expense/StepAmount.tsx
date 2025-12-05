@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowRight, Wallet, Camera } from 'lucide-react';
+import { ArrowRight, Wallet, Camera, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db/db';
@@ -8,9 +8,11 @@ import { db } from '@/lib/db/db';
 interface StepAmountProps {
     onNext: (amount: string, type: 'expense' | 'income', accountId: string) => void;
     onScan: (e: React.ChangeEvent<HTMLInputElement>) => void;
+    isScanning?: boolean;
+    scanError?: string | null;
 }
 
-export function StepAmount({ onNext, onScan }: StepAmountProps) {
+export function StepAmount({ onNext, onScan, isScanning = false, scanError = null }: StepAmountProps) {
     const [value, setValue] = useState('');
     const [type, setType] = useState<'expense' | 'income'>('expense');
     const [accountId, setAccountId] = useState('');
@@ -19,23 +21,24 @@ export function StepAmount({ onNext, onScan }: StepAmountProps) {
 
     const accounts = useLiveQuery(() => db.accounts.toArray());
 
+    const defaultAccountId = useMemo(() => {
+        if (!accounts || accounts.length === 0) return '';
+        const defaultAcc = accounts.find(a => a.name === 'Cash') || accounts[0];
+        return defaultAcc.id;
+    }, [accounts]);
+
     useEffect(() => {
         inputRef.current?.focus();
     }, []);
 
-    useEffect(() => {
-        if (accounts && accounts.length > 0 && !accountId) {
-            // Default to Cash or first account
-            const defaultAcc = accounts.find(a => a.name === 'Cash') || accounts[0];
-            setAccountId(defaultAcc.id);
-        }
-    }, [accounts, accountId]);
-
     const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && value && accountId) {
-            onNext(value, type, accountId);
+        const selectedAccountId = accountId || defaultAccountId;
+        if (e.key === 'Enter' && value && selectedAccountId) {
+            onNext(value, type, selectedAccountId);
         }
     };
+
+    const resolvedAccountId = accountId || defaultAccountId;
 
     return (
         <motion.div
@@ -93,7 +96,7 @@ export function StepAmount({ onNext, onScan }: StepAmountProps) {
                 <div className="flex items-center gap-2 px-4 py-2 bg-secondary rounded-xl">
                     <Wallet className="w-4 h-4 text-muted-foreground" />
                     <select
-                        value={accountId}
+                        value={resolvedAccountId}
                         onChange={(e) => setAccountId(e.target.value)}
                         className="bg-transparent border-none outline-none text-sm font-medium"
                     >
@@ -106,28 +109,34 @@ export function StepAmount({ onNext, onScan }: StepAmountProps) {
 
             <div className="mt-12 flex justify-center gap-4">
                 {/* Scan Button */}
-                <Button
-                    size="lg"
-                    variant="outline"
-                    className="rounded-full w-16 h-16 p-0 border-2"
-                    onClick={() => fileInputRef.current?.click()}
-                >
-                    <Camera className="w-6 h-6" />
-                    <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        className="hidden"
-                        onChange={onScan}
-                    />
-                </Button>
+                <div className="flex flex-col items-center">
+                    <Button
+                        size="lg"
+                        variant="outline"
+                        className="rounded-full w-16 h-16 p-0 border-2"
+                        onClick={() => !isScanning && fileInputRef.current?.click()}
+                        disabled={isScanning}
+                    >
+                        {isScanning ? <Loader2 className="w-6 h-6 animate-spin" /> : <Camera className="w-6 h-6" />}
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            className="hidden"
+                            onChange={onScan}
+                            disabled={isScanning}
+                        />
+                    </Button>
+                    {isScanning && <span className="mt-2 text-xs text-muted-foreground">Scanning receipt...</span>}
+                    {scanError && !isScanning && <span className="mt-2 text-xs text-destructive text-center max-w-[120px]">{scanError}</span>}
+                </div>
 
                 <Button
                     size="lg"
                     className={`rounded-full w-16 h-16 p-0 ${type === 'income' ? 'bg-green-500 hover:bg-green-600' : ''}`}
-                    onClick={() => value && accountId && onNext(value, type, accountId)}
-                    disabled={!value || !accountId}
+                    onClick={() => value && resolvedAccountId && onNext(value, type, resolvedAccountId)}
+                    disabled={!value || !resolvedAccountId}
                 >
                     <ArrowRight className="w-8 h-8" />
                 </Button>

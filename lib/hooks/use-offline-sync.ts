@@ -22,6 +22,62 @@ export function useOfflineSync() {
         };
     }, []);
 
+    // Process recurring expenses - extracted to hook scope so it can run offline
+    const processRecurringExpenses = async (userId: string) => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const activeRecurring = await db.recurring_expenses
+            .where('active').equals(1 as any) // Dexie boolean mapping
+            .toArray(); // Filter in memory if needed, or use proper index
+
+        // Dexie stores booleans as 1/0 sometimes depending on backend, but usually true/false works.
+        // Let's just fetch all and filter.
+        const allRecurring = await db.recurring_expenses.toArray();
+        
+        for (const recurring of allRecurring) {
+            if (!recurring.active) continue;
+
+            let nextDue = new Date(recurring.next_due_date);
+            let modified = false;
+
+            while (nextDue <= today) {
+                // Create expense
+                await db.expenses.add({
+                    id: crypto.randomUUID(),
+                    user_id: userId,
+                    category_id: recurring.category_id,
+                    amount: recurring.amount,
+                    note: recurring.description || 'Recurring Expense',
+                    date: nextDue.toISOString(),
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                    sync_status: 'pending',
+                });
+
+                // Calculate next date
+                if (recurring.frequency === 'daily') {
+                    nextDue.setDate(nextDue.getDate() + 1);
+                } else if (recurring.frequency === 'weekly') {
+                    nextDue.setDate(nextDue.getDate() + 7);
+                } else if (recurring.frequency === 'monthly') {
+                    nextDue.setMonth(nextDue.getMonth() + 1);
+                } else if (recurring.frequency === 'yearly') {
+                    nextDue.setFullYear(nextDue.getFullYear() + 1);
+                }
+                modified = true;
+            }
+
+            if (modified) {
+                await db.recurring_expenses.update(recurring.id, {
+                    next_due_date: nextDue.toISOString(),
+                    updated_at: new Date().toISOString(),
+                    sync_status: 'pending',
+                });
+            }
+        }
+    };
+
     const syncExpenses = async () => {
         if (!isOnline) return;
         setIsSyncing(true);
@@ -267,9 +323,6 @@ export function useOfflineSync() {
             }
 
             // (Accounts now synced above before expenses)
-
-            // Process recurring expenses (generate new ones if due)
-            await processRecurringExpenses(userId);
             
             console.log('[SYNC] Sync completed successfully');
 
@@ -280,60 +333,16 @@ export function useOfflineSync() {
         }
     };
 
-    const processRecurringExpenses = async (userId: string) => {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const activeRecurring = await db.recurring_expenses
-            .where('active').equals(1 as any) // Dexie boolean mapping
-            .toArray(); // Filter in memory if needed, or use proper index
-
-        // Dexie stores booleans as 1/0 sometimes depending on backend, but usually true/false works.
-        // Let's just fetch all and filter.
-        const allRecurring = await db.recurring_expenses.toArray();
-        
-        for (const recurring of allRecurring) {
-            if (!recurring.active) continue;
-
-            let nextDue = new Date(recurring.next_due_date);
-            let modified = false;
-
-            while (nextDue <= today) {
-                // Create expense
-                await db.expenses.add({
-                    id: crypto.randomUUID(),
-                    user_id: userId,
-                    category_id: recurring.category_id,
-                    amount: recurring.amount,
-                    note: recurring.description || 'Recurring Expense',
-                    date: nextDue.toISOString(),
-                    created_at: new Date().toISOString(),
-                    updated_at: new Date().toISOString(),
-                    sync_status: 'pending',
-                });
-
-                // Calculate next date
-                if (recurring.frequency === 'daily') {
-                    nextDue.setDate(nextDue.getDate() + 1);
-                } else if (recurring.frequency === 'weekly') {
-                    nextDue.setDate(nextDue.getDate() + 7);
-                } else if (recurring.frequency === 'monthly') {
-                    nextDue.setMonth(nextDue.getMonth() + 1);
-                } else if (recurring.frequency === 'yearly') {
-                    nextDue.setFullYear(nextDue.getFullYear() + 1);
-                }
-                modified = true;
+    // Process recurring expenses on mount (works offline)
+    useEffect(() => {
+        const checkRecurring = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                await processRecurringExpenses(user.id);
             }
-
-            if (modified) {
-                await db.recurring_expenses.update(recurring.id, {
-                    next_due_date: nextDue.toISOString(),
-                    updated_at: new Date().toISOString(),
-                    sync_status: 'pending',
-                });
-            }
-        }
-    };
+        };
+        checkRecurring();
+    }, []); // Runs once on mount
 
     // Auto-sync when coming online
     useEffect(() => {

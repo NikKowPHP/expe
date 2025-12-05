@@ -11,21 +11,33 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: "Gemini API Key not configured" }, { status: 500 });
         }
 
-        // Use gemini-1.5-flash for speed and multimodal capabilities
-        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const model = genAI.getGenerativeModel({ model: 'models/gemini-flash-latest' });
+
+        const categoryList = categories.map((c: any) => ({ id: c.id, name: c.name }));
 
         const prompt = `
-            Analyze this receipt image. Extract the following information:
-            1. Total Amount (number)
-            2. Date (ISO string, e.g., "2023-12-25")
-            3. Merchant/Note (string)
-            4. Category ID (string) - Suggest the best matching category ID from the provided list.
+            Analyze this receipt image (which might be in Polish or English).
+            
+            Extract the Merchant Name and the Date.
+            Then, extract EVERY single purchased item as a separate line item.
+            
+            For each item:
+            1. Extract the Item Name (description).
+            2. Extract the Item Price (amount). Ensure you parse commas as decimals (e.g., 3,99 becomes 3.99).
+            3. Select the most appropriate Category ID from the provided list.
 
             Categories List:
-            ${JSON.stringify(categories.map((c: any) => ({ id: c.id, name: c.name })))}
+            ${JSON.stringify(categoryList)}
 
-            Return ONLY a JSON object with keys: amount, date, note, category_id.
-            If a field cannot be found, use null.
+            Return ONLY a JSON object with this structure:
+            {
+                "merchant": "Store Name",
+                "date": "YYYY-MM-DD",
+                "items": [
+                    { "description": "Milk", "amount": 2.99, "category_id": "uuid..." },
+                    { "description": "Bread", "amount": 1.50, "category_id": "uuid..." }
+                ]
+            }
         `;
 
         // image is expected to be base64 string without data:image/jpeg;base64, prefix
@@ -46,8 +58,10 @@ export async function POST(req: Request) {
         ]);
 
         const response = await result.response;
+
         const text = response.text();
 
+        console.log('text from image', text);
         // Clean up markdown code blocks if present
         const jsonStr = text.replace(/```json/g, '').replace(/```/g, '').trim();
         const data = JSON.parse(jsonStr);

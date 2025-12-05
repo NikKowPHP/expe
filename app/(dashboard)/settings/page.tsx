@@ -13,7 +13,9 @@ import { CategoryManager } from '@/components/features/categories/CategoryManage
 import { BudgetManager } from '@/components/features/budgets/BudgetManager';
 import { RecurringExpensesList } from '@/components/features/expenses/RecurringExpensesList';
 import { AccountManager } from '@/components/features/accounts/AccountManager';
-import { RefreshCw, Wallet } from 'lucide-react';
+import { CsvImport } from '@/components/features/settings/CsvImport';
+import { RefreshCw, Wallet, Cloud } from 'lucide-react';
+import { useOfflineSync } from '@/lib/hooks/use-offline-sync';
 
 export default function SettingsPage() {
     const { theme, setTheme } = useTheme();
@@ -22,6 +24,7 @@ export default function SettingsPage() {
     const [userEmail, setUserEmail] = useState<string | null>(null);
     const router = useRouter();
     const supabase = createClient();
+    const { isOnline, isSyncing, syncExpenses } = useOfflineSync();
 
     const expenses = useLiveQuery(() => db.expenses.filter(e => !e.deleted_at).toArray());
     const categories = useLiveQuery(() => db.categories.toArray());
@@ -134,6 +137,35 @@ export default function SettingsPage() {
                 </div>
             </SettingSection>
 
+            </SettingSection>
+
+            {/* Cloud Sync */}
+            <SettingSection
+                icon={Cloud}
+                title="Cloud Sync"
+                description="Manage data synchronization"
+            >
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between p-4 bg-background rounded-xl">
+                        <div>
+                            <p className="font-medium">Sync Status</p>
+                            <p className="text-sm text-muted-foreground">
+                                {isSyncing ? 'Syncing...' : isOnline ? 'Online' : 'Offline'}
+                            </p>
+                        </div>
+                        <Button
+                            onClick={() => syncExpenses()}
+                            disabled={isSyncing || !isOnline}
+                            variant="outline"
+                            size="sm"
+                        >
+                            <RefreshCw className={`w-4 h-4 mr-2 ${isSyncing ? 'animate-spin' : ''}`} />
+                            {isSyncing ? 'Syncing...' : 'Sync Now'}
+                        </Button>
+                    </div>
+                </div>
+            </SettingSection>
+
             {/* Appearance */}
             <SettingSection
                 icon={theme === 'dark' ? Moon : Sun}
@@ -232,6 +264,12 @@ export default function SettingsPage() {
                 description="Export or clear your data"
             >
                 <div className="space-y-3">
+                    {/* CSV Import */}
+                    <div className="pb-3 border-b border-border">
+                        <p className="text-sm font-medium mb-2">Import Data (CSV)</p>
+                        <CsvImport />
+                    </div>
+
                     <div className="flex items-center justify-between p-4 bg-background rounded-xl">
                         <div>
                             <p className="font-medium">Total Expenses</p>
