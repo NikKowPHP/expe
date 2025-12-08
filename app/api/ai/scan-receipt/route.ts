@@ -51,7 +51,7 @@ export async function POST(req: Request) {
     const prompt = `
 Analyze this receipt image (which might be in Polish or English).
 
-Extract the Merchant Name and the Date.
+Extract the Merchant Name.
 Then, extract EVERY single purchased item as a separate line item.
 
 For each item:
@@ -73,7 +73,6 @@ ${JSON.stringify(subcategoryList)}
 Return ONLY a JSON object with this structure:
 {
   "merchant": "Store Name",
-  "date": "YYYY-MM-DD",
   "items": [
     { 
       "description": "Milk", 

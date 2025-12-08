@@ -140,7 +140,7 @@ export function AddExpenseWizard() {
                     setScannedData({
                         items: processedItems,
                         merchant: data.merchant || '',
-                        date: data.date || new Date().toISOString().split('T')[0],
+                        date: new Date().toLocaleDateString('en-CA'),
                         image: base64,
                     });
                     setStep(4);
