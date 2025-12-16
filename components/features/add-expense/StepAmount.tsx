@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRight, Wallet, Camera, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -26,10 +26,6 @@ export function StepAmount({ onNext, onScan, isScanning = false, scanError = nul
         const defaultAcc = accounts.find(a => a.name === 'Cash') || accounts[0];
         return defaultAcc.id;
     }, [accounts]);
-
-    useEffect(() => {
-        inputRef.current?.focus();
-    }, []);
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         const selectedAccountId = accountId || defaultAccountId;
@@ -122,7 +118,6 @@ export function StepAmount({ onNext, onScan, isScanning = false, scanError = nul
                             ref={fileInputRef}
                             type="file"
                             accept="image/*"
-                            capture="environment"
                             className="hidden"
                             onChange={(e) => onScan(e, resolvedAccountId)}
                             disabled={isScanning}
