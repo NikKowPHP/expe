@@ -5,8 +5,8 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db/db';
 import { useCategoryMutations } from '@/lib/hooks/use-category-mutations';
 import { Button } from '@/components/ui/button';
-import { 
-  Plus, Edit2, Trash2, Check, X, 
+import {
+  Plus, Edit2, Trash2, Check, X,
   Coffee, Bus, ShoppingCart, Home, Zap, Heart, Briefcase, MoreHorizontal,
   DollarSign, TrendingUp, Gift, Music, Book, Car, Plane, Film
 } from 'lucide-react';
@@ -52,18 +52,19 @@ const COLOR_OPTIONS = [
 export function CategoryManager() {
   const categories = useLiveQuery(() => db.categories.toArray());
   const { createCategory, updateCategory, deleteCategory } = useCategoryMutations();
-  
+
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     icon: 'more-horizontal',
     color: 'bg-gray-100 text-gray-600',
+    type: 'expense' as 'income' | 'expense',
   });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     try {
       if (editingId) {
         await updateCategory(editingId, formData);
@@ -72,11 +73,12 @@ export function CategoryManager() {
         await createCategory(formData);
         setIsAdding(false);
       }
-      
+
       setFormData({
         name: '',
         icon: 'more-horizontal',
         color: 'bg-gray-100 text-gray-600',
+        type: 'expense',
       });
     } catch (error) {
       console.error('Failed to save category:', error);
@@ -91,6 +93,7 @@ export function CategoryManager() {
         name: category.name,
         icon: category.icon,
         color: category.color || 'bg-gray-100 text-gray-600',
+        type: category.type,
       });
       setEditingId(categoryId);
       setIsAdding(false);
@@ -103,7 +106,7 @@ export function CategoryManager() {
       alert('Cannot delete default categories');
       return;
     }
-    
+
     if (confirm('Are you sure you want to delete this category?')) {
       try {
         await deleteCategory(categoryId);
@@ -121,6 +124,7 @@ export function CategoryManager() {
       name: '',
       icon: 'more-horizontal',
       color: 'bg-gray-100 text-gray-600',
+      type: 'expense',
     });
   };
 
@@ -136,7 +140,7 @@ export function CategoryManager() {
         {categories?.map((category) => {
           const Icon = getIconComponent(category.icon);
           const isEditing = editingId === category.id;
-          
+
           return (
             <motion.div
               key={category.id}
@@ -154,7 +158,7 @@ export function CategoryManager() {
                   <span className="ml-auto w-2 h-2 bg-yellow-500 rounded-full" title="Pending sync" />
                 )}
               </div>
-              
+
               <div className="flex gap-2">
                 <Button
                   size="sm"
@@ -193,7 +197,35 @@ export function CategoryManager() {
             <h3 className="font-semibold">
               {editingId ? 'Edit Category' : 'Add New Category'}
             </h3>
-            
+
+            {/* Type Selection */}
+            <div className="flex p-1 bg-muted rounded-xl">
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, type: 'expense' })}
+                className={cn(
+                  'flex-1 py-2 text-sm font-medium rounded-lg transition-all',
+                  formData.type === 'expense'
+                    ? 'bg-background shadow-sm text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                Expense
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, type: 'income' })}
+                className={cn(
+                  'flex-1 py-2 text-sm font-medium rounded-lg transition-all',
+                  formData.type === 'income'
+                    ? 'bg-background shadow-sm text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                Income
+              </button>
+            </div>
+
             {/* Name Input */}
             <div>
               <label className="block text-sm mb-2">Name</label>

@@ -17,8 +17,8 @@ export function CsvImport() {
     const [stats, setStats] = useState({ success: 0, skipped: 0 });
     const [step, setStep] = useState<'upload' | 'preview' | 'result'>('upload');
     const fileInputRef = useRef<HTMLInputElement>(null);
-    
-    const { categories } = useCategories();
+
+    const { categories } = useCategories('expense');
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const selectedFile = e.target.files?.[0];
@@ -72,13 +72,13 @@ export function CsvImport() {
 
             for (let i = 0; i < uniqueDescriptions.length; i += chunkSize) {
                 const chunk = uniqueDescriptions.slice(i, i + chunkSize);
-                
+
                 const res = await fetch('/api/ai/categorize-batch', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        descriptions: chunk, 
-                        categories: categories 
+                    body: JSON.stringify({
+                        descriptions: chunk,
+                        categories: categories
                     }),
                 });
 
@@ -119,7 +119,7 @@ export function CsvImport() {
             const { data: { user } } = await (await import('@/lib/supabase/client')).createClient().auth.getUser();
             const userId = user?.id || 'anonymous';
             const defaultAccount = await db.accounts.where('name').equals('Cash').first();
-            
+
             // Default "Other" category as fallback
             const otherCategory = categories.find(c => c.name === 'Other')?.id || categories[0]?.id;
 
@@ -132,7 +132,7 @@ export function CsvImport() {
                     user_id: userId,
                     account_id: defaultAccount?.id,
                     // Use AI category, or fallback to 'Other'
-                    category_id: row.categoryId || otherCategory, 
+                    category_id: row.categoryId || otherCategory,
                     amount: Math.abs(amount),
                     note: row.description,
                     date: new Date(row.date).toISOString(),
@@ -168,7 +168,7 @@ export function CsvImport() {
             <AnimatePresence mode="wait">
                 {step === 'upload' && (
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                        <div 
+                        <div
                             onClick={() => fileInputRef.current?.click()}
                             className="border-2 border-dashed border-border rounded-xl p-8 text-center cursor-pointer hover:bg-secondary/50 transition-colors"
                         >
@@ -183,12 +183,12 @@ export function CsvImport() {
                     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-4">
                         <div className="flex justify-between items-center">
                             <h3 className="font-semibold">Review Data</h3>
-                            
+
                             {/* AI MAGIC BUTTON */}
-                            <Button 
-                                variant="secondary" 
-                                size="sm" 
-                                onClick={runAiCategorization} 
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={runAiCategorization}
                                 disabled={isCategorizing || isImporting}
                                 className="bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-300"
                             >
@@ -219,11 +219,10 @@ export function CsvImport() {
                                                 <td className="p-3 max-w-[150px] truncate" title={row.description}>{row.description}</td>
                                                 <td className="p-3">{row.amount}</td>
                                                 <td className="p-3">
-                                                    <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${
-                                                        row.categoryId 
-                                                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' 
+                                                    <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium ${row.categoryId
+                                                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                                                             : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                                                    }`}>
+                                                        }`}>
                                                         {row.categoryName}
                                                     </span>
                                                 </td>
@@ -233,10 +232,10 @@ export function CsvImport() {
                                 </table>
                             </div>
                         </div>
-                        
+
                         <div className="flex gap-2">
                             <Button onClick={processImport} disabled={isImporting || isCategorizing} className="flex-1">
-                                {isImporting ? <Loader2 className="w-4 h-4 animate-spin mr-2"/> : <Upload className="w-4 h-4 mr-2"/>}
+                                {isImporting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Upload className="w-4 h-4 mr-2" />}
                                 Import {preview.length} Rows
                             </Button>
                             <Button variant="outline" onClick={reset} disabled={isImporting}>
@@ -245,13 +244,13 @@ export function CsvImport() {
                         </div>
                     </motion.div>
                 )}
-                
+
                 {step === 'result' && (
                     <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="text-center p-6 bg-green-50 dark:bg-green-950/30 rounded-xl border border-green-200 dark:border-green-900">
-                         <Check className="w-12 h-12 mx-auto text-green-600 mb-2" />
-                         <h3 className="text-lg font-bold">Success!</h3>
-                         <p className="text-muted-foreground mb-4">Imported {stats.success} expenses.</p>
-                         <Button onClick={reset} variant="outline">Done</Button>
+                        <Check className="w-12 h-12 mx-auto text-green-600 mb-2" />
+                        <h3 className="text-lg font-bold">Success!</h3>
+                        <p className="text-muted-foreground mb-4">Imported {stats.success} expenses.</p>
+                        <Button onClick={reset} variant="outline">Done</Button>
                     </motion.div>
                 )}
             </AnimatePresence>

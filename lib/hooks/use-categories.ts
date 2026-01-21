@@ -3,10 +3,15 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, Category } from '@/lib/db/db';
 
-export function useCategories() {
+export function useCategories(type?: 'income' | 'expense') {
     const categories = useLiveQuery<Category[]>(
-        () => db.categories.where('type').equals('expense').toArray(),
-        []
+        () => {
+            if (type) {
+                return db.categories.where('type').equals(type).toArray();
+            }
+            return db.categories.toArray();
+        },
+        [type]
     );
 
     return {

@@ -20,10 +20,56 @@ export default function AnalyticsPage() {
     const [loadingInsight, setLoadingInsight] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState<{ id: string, name: string } | null>(null);
 
+    // Date filtering state
+    const [filterMode, setFilterMode] = useState<'month' | 'range'>('month');
+    const [selectedMonth, setSelectedMonth] = useState(() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    });
+    const [customRange, setCustomRange] = useState({
+        start: new Date().toISOString().split('T')[0],
+        end: new Date().toISOString().split('T')[0]
+    });
+
     if (!expenses || !categories || !subcategories) return <div className="p-6">Loading...</div>;
 
-    // Check for exceeded budgets
-    const exceededBudgets = budgetStatuses.filter(b => b.remaining < 0);
+    // Filter expenses based on date selection
+    const filteredExpenses = expenses.filter(expense => {
+        const expenseDate = new Date(expense.date);
+
+        if (filterMode === 'month') {
+            const [year, month] = selectedMonth.split('-').map(Number);
+            return expenseDate.getFullYear() === year && expenseDate.getMonth() === month - 1;
+        } else {
+            const start = new Date(customRange.start);
+            const end = new Date(customRange.end);
+            // Set end date to end of day to include expenses on that day
+            end.setHours(23, 59, 59, 999);
+            return expenseDate >= start && expenseDate <= end;
+        }
+    });
+
+    // Check for exceeded budgets (using filtered expenses for accurate monthly view)
+    // Note: Budgets are typically monthly, so comparing against a custom range might be tricky.
+    // usage logic in useBudgets might not respect this local filter, so we might need to recalculate
+    // 'spent' based on 'filteredExpenses' if we want it to be dynamic. 
+    // For now, let's recalculate the 'spent' part for the alerts based on the current view.
+
+    // Recalculate spending per category based on filtered data
+    const spendingByCategory = filteredExpenses.reduce((acc, curr) => {
+        const catId = curr.category_id;
+        acc[catId] = (acc[catId] || 0) + curr.amount;
+        return acc;
+    }, {} as Record<string, number>);
+
+    // Re-map budgets to include current view's spending
+    const currentViewBudgetStatuses = budgetStatuses.map(b => ({
+        ...b,
+        spent: spendingByCategory[b.categoryId] || 0,
+        remaining: b.budgetAmount - (spendingByCategory[b.categoryId] || 0)
+    }));
+
+    const exceededBudgets = currentViewBudgetStatuses.filter(b => b.remaining < 0);
 
     // Create a map of category_id to category name
     const categoryMap = categories.reduce((acc, cat) => {
@@ -31,8 +77,8 @@ export default function AnalyticsPage() {
         return acc;
     }, {} as Record<string, string>);
 
-    // Group by category (keep ID)
-    const byCategory = expenses.reduce((acc, curr) => {
+    // Group by category (keep ID) using FILTERED expenses
+    const byCategory = filteredExpenses.reduce((acc, curr) => {
         const catId = curr.category_id;
         acc[catId] = (acc[catId] || 0) + curr.amount;
         return acc;
@@ -44,13 +90,13 @@ export default function AnalyticsPage() {
         value
     }));
 
-    // Aggregate by Subcategory
+    // Aggregate by Subcategory using FILTERED expenses
     const subcategoryMap = subcategories?.reduce((acc, sub) => {
         acc[sub.id] = sub.name;
         return acc;
     }, {} as Record<string, string>) || {};
 
-    const bySubcategory = expenses.reduce((acc, curr) => {
+    const bySubcategory = filteredExpenses.reduce((acc, curr) => {
         // Filter by selected category if set
         if (selectedCategory && curr.category_id !== selectedCategory.id) return acc;
 
@@ -77,7 +123,7 @@ export default function AnalyticsPage() {
             const res = await fetch('/api/ai/insights', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ expenses: expenses?.slice(0, 50) }), // Limit to 50 for now
+                body: JSON.stringify({ expenses: filteredExpenses?.slice(0, 50) }), // Use filtered expenses
             });
             const data = await res.json();
             setInsight(data.insight);
@@ -90,11 +136,63 @@ export default function AnalyticsPage() {
 
     return (
         <div className="p-6 space-y-8 pb-24">
-            <div className="flex items-center justify-between">
-                <h1 className="text-3xl font-bold">Analytics</h1>
-                <Button onClick={handleAudit} disabled={loadingInsight}>
-                    {loadingInsight ? 'Analyzing...' : 'Spending Audit'}
-                </Button>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-bold">Analytics</h1>
+                    <p className="text-muted-foreground text-sm">
+                        {filterMode === 'month'
+                            ? `Showing data for ${new Date(selectedMonth).toLocaleDateString('default', { month: 'long', year: 'numeric' })}`
+                            : 'Showing data for selected range'}
+                    </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 bg-card p-2 rounded-xl border border-border shadow-sm">
+                    <div className="flex bg-muted rounded-lg p-1">
+                        <button
+                            onClick={() => setFilterMode('month')}
+                            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${filterMode === 'month' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                        >
+                            Month
+                        </button>
+                        <button
+                            onClick={() => setFilterMode('range')}
+                            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${filterMode === 'range' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'
+                                }`}
+                        >
+                            Range
+                        </button>
+                    </div>
+
+                    {filterMode === 'month' ? (
+                        <input
+                            type="month"
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(e.target.value)}
+                            className="bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                        />
+                    ) : (
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="date"
+                                value={customRange.start}
+                                onChange={(e) => setCustomRange(prev => ({ ...prev, start: e.target.value }))}
+                                className="bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                            />
+                            <span className="text-muted-foreground">-</span>
+                            <input
+                                type="date"
+                                value={customRange.end}
+                                onChange={(e) => setCustomRange(prev => ({ ...prev, end: e.target.value }))}
+                                className="bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                            />
+                        </div>
+                    )}
+
+                    <Button onClick={handleAudit} disabled={loadingInsight} size="sm">
+                        {loadingInsight ? 'Analyzing...' : 'Audit View'}
+                    </Button>
+                </div>
             </div>
 
             {insight && (

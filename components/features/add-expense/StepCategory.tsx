@@ -39,10 +39,9 @@ const ICON_MAP: Record<string, LucideIcon> = {
 export function StepCategory({ onNext, onBack, type }: StepCategoryProps) {
     const [search, setSearch] = useState('');
     const [selectedIndex, setSelectedIndex] = useState(0);
-    const { categories, isLoading } = useCategories();
+    const { categories, isLoading } = useCategories(type);
 
     const filteredCategories = categories.filter(c =>
-        c.type === type && // Filter by type
         c.name.toLowerCase().includes(search.toLowerCase())
     );
 
