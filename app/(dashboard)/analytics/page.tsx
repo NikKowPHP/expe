@@ -18,7 +18,7 @@ export default function AnalyticsPage() {
     const subcategories = useLiveQuery(() => db.subcategories.toArray());
     const [insight, setInsight] = useState('');
     const [loadingInsight, setLoadingInsight] = useState(false);
-    const [selectedCategory, setSelectedCategory] = useState<{id: string, name: string} | null>(null);
+    const [selectedCategory, setSelectedCategory] = useState<{ id: string, name: string } | null>(null);
 
     if (!expenses || !categories || !subcategories) return <div className="p-6">Loading...</div>;
 
@@ -38,10 +38,10 @@ export default function AnalyticsPage() {
         return acc;
     }, {} as Record<string, number>);
 
-    const pieData = Object.entries(byCategory).map(([id, value]) => ({ 
-        id, 
-        name: categoryMap[id] || 'Unknown', 
-        value 
+    const pieData = Object.entries(byCategory).map(([id, value]) => ({
+        id,
+        name: categoryMap[id] || 'Unknown',
+        value
     }));
 
     // Aggregate by Subcategory
@@ -115,7 +115,7 @@ export default function AnalyticsPage() {
                     animate={{ opacity: 1, y: 0 }}
                     className="bg-red-50 dark:bg-red-950 p-4 rounded-xl text-red-800 dark:text-red-200 border border-red-200 dark:border-red-800 flex items-start gap-3"
                 >
-                    <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
+                    <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
                     <div>
                         <h3 className="font-bold mb-1">Budget Alert</h3>
                         <p>
@@ -181,9 +181,9 @@ export default function AnalyticsPage() {
                                 className="cursor-pointer focus:outline-none"
                             >
                                 {pieData.map((entry, index) => (
-                                    <Cell 
-                                        key={`cell-${index}`} 
-                                        fill={COLORS[index % COLORS.length]} 
+                                    <Cell
+                                        key={`cell-${index}`}
+                                        fill={COLORS[index % COLORS.length]}
                                         stroke={selectedCategory?.id === entry.id ? '#000' : 'none'}
                                         strokeWidth={2}
                                     />
@@ -208,8 +208,8 @@ export default function AnalyticsPage() {
                     <ResponsiveContainer width="100%" height="100%">
                         <BarChart data={subcategoryData} layout="vertical">
                             <XAxis type="number" hide />
-                            <YAxis dataKey="name" type="category" width={100} tick={{fontSize: 12}} />
-                            <Tooltip formatter={(value: number) => value.toFixed(2)} />
+                            <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 12 }} />
+                            <Tooltip formatter={(value: number | undefined) => (value || 0).toFixed(2)} />
                             <Bar dataKey="value" fill="#82ca9d" radius={[0, 4, 4, 0]} label={{ position: 'right' }} />
                         </BarChart>
                     </ResponsiveContainer>
