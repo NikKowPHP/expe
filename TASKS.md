@@ -1,3 +1,5 @@
 - [x] Fix AI receipt scanning to handle discounts (OPUST/RABAT) by merging them into the item price instead of creating separate items.
 - [x] Create test user (dev@dev.dev / a) and seed initial data.
 - [x] Fix Recurring Expenses deletion issue (ensure soft-deleted items are filtered out in UI).
+- [x] Make Main Index Page Desktop Friendly (SideNav + Grid Layout).
+      
