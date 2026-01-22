@@ -3,3 +3,4 @@
 - [x] Fix Recurring Expenses deletion issue (ensure soft-deleted items are filtered out in UI).
 - [x] Make Main Index Page Desktop Friendly (SideNav + Grid Layout).
 - [x] Implement Account Transfers (DB, Sync, UI, Balances).
+- [x] Refine Analytics (Split Income/Expense, Savings Rate).
