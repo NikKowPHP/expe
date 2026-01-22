@@ -13,16 +13,32 @@ export function AccountCard({ account }: AccountCardProps) {
     const currency = getCurrency();
 
     const currentBalance = useLiveQuery(async () => {
+        // 1. Fetch expenses (income and expense) for this account
         const expenses = await db.expenses
             .where('account_id')
             .equals(account.id)
             .filter(e => !e.deleted_at)
             .toArray();
         
+        // 2. Fetch transfers where this account is the SENDER
+        const transfersOut = await db.transfers
+            .where('from_account_id')
+            .equals(account.id)
+            .filter(t => !t.deleted_at)
+            .toArray();
+
+        // 3. Fetch transfers where this account is the RECEIVER
+        const transfersIn = await db.transfers
+            .where('to_account_id')
+            .equals(account.id)
+            .filter(t => !t.deleted_at)
+            .toArray();
+
         const categories = await db.categories.toArray();
         
         let balance = account.balance; // Start with initial balance
 
+        // Process expenses/income
         for (const expense of expenses) {
             const category = categories.find(c => c.id === expense.category_id);
             if (category?.type === 'income') {
@@ -31,6 +47,15 @@ export function AccountCard({ account }: AccountCardProps) {
                 balance -= expense.amount;
             }
         }
+
+        // Process transfers
+        for (const t of transfersOut) {
+            balance -= t.amount;
+        }
+        for (const t of transfersIn) {
+            balance += t.amount;
+        }
+
         return balance;
     }, [account.id, account.balance]);
 

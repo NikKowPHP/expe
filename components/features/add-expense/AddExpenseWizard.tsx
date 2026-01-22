@@ -24,8 +24,9 @@ export function AddExpenseWizard() {
     const router = useRouter();
     const [step, setStep] = useState(1);
     const [amount, setAmount] = useState('');
-    const [transactionType, setTransactionType] = useState<'expense' | 'income'>('expense');
-    const [accountId, setAccountId] = useState<string>(''); // Default to empty, will select default account
+    const [transactionType, setTransactionType] = useState<'expense' | 'income' | 'transfer'>('expense');
+    const [accountId, setAccountId] = useState<string>(''); 
+    const [toAccountId, setToAccountId] = useState<string>(''); // For transfers
     const [categoryId, setCategoryId] = useState('');
     const [userId, setUserId] = useState<string | null>(null);
     const [isScanning, setIsScanning] = useState(false);
@@ -54,18 +55,24 @@ export function AddExpenseWizard() {
                     setAccountId(defaultAccount.id);
                 }
             } else {
-                // If no user, use a temporary ID (for demo purposes)
                 setUserId('anonymous');
             }
         };
         getUser();
     }, [supabase]);
 
-    const handleAmountSubmit = (value: string, type: 'expense' | 'income', accId: string) => {
+    const handleAmountSubmit = (value: string, type: 'expense' | 'income' | 'transfer', accId: string, toAccId?: string) => {
         setAmount(value);
         setTransactionType(type);
         setAccountId(accId);
-        setStep(2);
+        if (toAccId) setToAccountId(toAccId);
+
+        // If transfer, skip category selection
+        if (type === 'transfer') {
+            setStep(3); // Go directly to details (for note/date)
+        } else {
+            setStep(2); // Go to category
+        }
     };
 
     const handleCategorySubmit = (id: string) => {
@@ -74,6 +81,7 @@ export function AddExpenseWizard() {
     };
 
     const handleScanReceipt = async (e: React.ChangeEvent<HTMLInputElement>, selectedAccountId?: string) => {
+        // ... existing scan logic ...
         const file = e.target.files?.[0];
         if (!file) return;
 
@@ -81,8 +89,6 @@ export function AddExpenseWizard() {
             setAccountId(selectedAccountId);
         }
 
-        // Show loading state (could add a global loading state or pass to StepAmount)
-        // For now, let's just log
         console.log('Scanning receipt...');
 
         if (!categories || categories.length === 0) {
@@ -96,30 +102,22 @@ export function AddExpenseWizard() {
         const reader = new FileReader();
         reader.onloadend = async () => {
             const base64 = reader.result as string;
-            
             try {
-                // Fetch all subcategories to help AI match existing ones
                 const allSubcategories = await db.subcategories.toArray();
-
-                // Fetch categories for AI context
                 const res = await fetch('/api/ai/scan-receipt', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ image: base64, categories, subcategories: allSubcategories }),
                 });
 
-                if (!res.ok) {
-                    throw new Error('Failed to scan receipt');
-                }
+                if (!res.ok) throw new Error('Failed to scan receipt');
 
                 const data = await res.json();
                 
                 if (data.items && Array.isArray(data.items)) {
-                    // Handle new category suggestions
                     const newTempCategories: { id: string; name: string }[] = [];
                     const processedItems = data.items.map((item: ReceiptItem & { new_category_name?: string }) => {
                         if (item.new_category_name && !item.category_id) {
-                            // Check if we already created a temp category for this name in this batch
                             let tempCat = newTempCategories.find(c => c.name === item.new_category_name);
                             if (!tempCat) {
                                 tempCat = {
@@ -128,10 +126,7 @@ export function AddExpenseWizard() {
                                 };
                                 newTempCategories.push(tempCat);
                             }
-                            return {
-                                ...item,
-                                category_id: tempCat.id
-                            };
+                            return { ...item, category_id: tempCat.id };
                         }
                         return item;
                     });
@@ -163,6 +158,7 @@ export function AddExpenseWizard() {
     };
 
     const handleReceiptSave = async (items: ReceiptItem[], merchant: string, receiptDate: Date, shouldSplit: boolean) => {
+        // ... existing save logic ...
         if (!userId) return;
         if (!accountId) {
             alert('Please select an account before saving.');
@@ -180,7 +176,6 @@ export function AddExpenseWizard() {
             return;
         }
 
-        // Save any temporary categories that were used
         if (tempCategories.length > 0) {
             const usedTempCatIds = new Set(items.map(i => i.category_id));
             const categoriesToCreate = tempCategories.filter(c => usedTempCatIds.has(c.id)).map(c => ({
@@ -222,14 +217,10 @@ export function AddExpenseWizard() {
             return;
         }
 
-        // Create subcategories if needed and map items
         const processedItems = await Promise.all(normalizedItems.map(async (item) => {
             let subcategoryId = undefined;
-
             if (item.subcategory_name && item.subcategory_name.trim()) {
                 const subName = item.subcategory_name.trim();
-                
-                // Check if subcategory exists for this category
                 const existingSub = await db.subcategories
                     .where({ user_id: userId, category_id: item.category_id })
                     .filter(s => s.name.toLowerCase() === subName.toLowerCase())
@@ -238,7 +229,6 @@ export function AddExpenseWizard() {
                 if (existingSub) {
                     subcategoryId = existingSub.id;
                 } else {
-                    // Create new subcategory
                     const newSubId = uuidv4();
                     await db.subcategories.add({
                         id: newSubId,
@@ -251,14 +241,9 @@ export function AddExpenseWizard() {
                     subcategoryId = newSubId;
                 }
             }
-
-            return {
-                ...item,
-                subcategory_id: subcategoryId
-            };
+            return { ...item, subcategory_id: subcategoryId };
         }));
 
-        // Group items by category (using processed items with subcategory_ids)
         const itemsByCategory = new Map<string, typeof processedItems>();
         for (const item of processedItems) {
             const current = itemsByCategory.get(item.category_id) || [];
@@ -267,7 +252,6 @@ export function AddExpenseWizard() {
         }
 
         if (shouldSplit) {
-            // OPTION 1: Split into multiple expense entries per category
             const newExpenses = Array.from(itemsByCategory.entries()).map(([catId, catItems]) => {
                 const totalAmount = catItems.reduce((sum, item) => sum + item.amount, 0);
                 
@@ -290,14 +274,9 @@ export function AddExpenseWizard() {
                     sync_status: 'pending' as const,
                 };
             });
-
             await db.expenses.bulkAdd(newExpenses);
-
         } else {
-            // OPTION 2: Single expense with grouped items (Default)
             const totalAmount = processedItems.reduce((sum, item) => sum + item.amount, 0);
-
-            // Determine primary category (highest total)
             const categoryTotals = new Map<string, number>();
             for (const [catId, catItems] of itemsByCategory.entries()) {
                 const total = catItems.reduce((sum, i) => sum + i.amount, 0);
@@ -306,7 +285,6 @@ export function AddExpenseWizard() {
 
             let primaryCategoryId = processedItems[0].category_id;
             let maxTotal = 0;
-            
             for (const [catId, total] of categoryTotals.entries()) {
                 if (total > maxTotal) {
                     maxTotal = total;
@@ -332,7 +310,6 @@ export function AddExpenseWizard() {
                 updated_at: new Date().toISOString(),
                 sync_status: 'pending' as const,
             };
-
             await db.expenses.add(newExpense);
         }
 
@@ -340,54 +317,70 @@ export function AddExpenseWizard() {
     };
 
     const handleDetailsSubmit = async (finalNote: string, finalDate: Date, isRecurring: boolean, frequency: 'daily' | 'weekly' | 'monthly' | 'yearly') => {
-        if (!userId) {
-            console.error('No user ID available');
-            return;
-        }
+        if (!userId) return;
 
         try {
-            // 1. Save the immediate expense
-            await db.expenses.add({
-                id: uuidv4(),
-                user_id: userId,
-                account_id: accountId,
-                category_id: categoryId,
-                amount: parseFloat(amount),
-                note: finalNote,
-                date: finalDate.toISOString(),
-                created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-                sync_status: 'pending',
-            });
+            if (transactionType === 'transfer') {
+                // HANDLE TRANSFER
+                if (!accountId || !toAccountId) {
+                    console.error('Missing account info for transfer');
+                    return;
+                }
 
-            // 2. If recurring, save the recurring schedule
-            if (isRecurring) {
-                // Calculate next due date
-                const nextDue = new Date(finalDate);
-                if (frequency === 'daily') nextDue.setDate(nextDue.getDate() + 1);
-                if (frequency === 'weekly') nextDue.setDate(nextDue.getDate() + 7);
-                if (frequency === 'monthly') nextDue.setMonth(nextDue.getMonth() + 1);
-                if (frequency === 'yearly') nextDue.setFullYear(nextDue.getFullYear() + 1);
-
-                await db.recurring_expenses.add({
+                await db.transfers.add({
                     id: uuidv4(),
                     user_id: userId,
-                    category_id: categoryId,
+                    from_account_id: accountId,
+                    to_account_id: toAccountId,
                     amount: parseFloat(amount),
-                    description: finalNote,
-                    frequency: frequency,
-                    next_due_date: nextDue.toISOString(),
-                    active: true,
+                    note: finalNote || 'Transfer',
+                    date: finalDate.toISOString(),
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString(),
                     sync_status: 'pending',
                 });
+
+            } else {
+                // HANDLE INCOME/EXPENSE
+                await db.expenses.add({
+                    id: uuidv4(),
+                    user_id: userId,
+                    account_id: accountId,
+                    category_id: categoryId,
+                    amount: parseFloat(amount),
+                    note: finalNote,
+                    date: finalDate.toISOString(),
+                    created_at: new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                    sync_status: 'pending',
+                });
+
+                if (isRecurring) {
+                    const nextDue = new Date(finalDate);
+                    if (frequency === 'daily') nextDue.setDate(nextDue.getDate() + 1);
+                    if (frequency === 'weekly') nextDue.setDate(nextDue.getDate() + 7);
+                    if (frequency === 'monthly') nextDue.setMonth(nextDue.getMonth() + 1);
+                    if (frequency === 'yearly') nextDue.setFullYear(nextDue.getFullYear() + 1);
+
+                    await db.recurring_expenses.add({
+                        id: uuidv4(),
+                        user_id: userId,
+                        category_id: categoryId,
+                        amount: parseFloat(amount),
+                        description: finalNote,
+                        frequency: frequency,
+                        next_due_date: nextDue.toISOString(),
+                        active: true,
+                        created_at: new Date().toISOString(),
+                        updated_at: new Date().toISOString(),
+                        sync_status: 'pending',
+                    });
+                }
             }
 
-            // Navigate back to home - sync will happen automatically via useOfflineSync
             router.push('/');
         } catch (error) {
-            console.error('Failed to save expense:', error);
+            console.error('Failed to save transaction:', error);
         }
     };
 
@@ -403,16 +396,20 @@ export function AddExpenseWizard() {
                         scanError={scanError}
                     />
                 )}
-                {step === 2 && (
+                {step === 2 && transactionType !== 'transfer' && (
                     <StepCategory 
                         key="step2" 
                         onNext={handleCategorySubmit} 
                         onBack={() => setStep(1)} 
-                        type={transactionType}
+                        type={transactionType as 'expense' | 'income'}
                     />
                 )}
                 {step === 3 && (
-                    <StepDetails key="step3" onSubmit={handleDetailsSubmit} onBack={() => setStep(2)} />
+                    <StepDetails 
+                        key="step3" 
+                        onSubmit={handleDetailsSubmit} 
+                        onBack={() => setStep(transactionType === 'transfer' ? 1 : 2)} 
+                    />
                 )}
                 {step === 4 && scannedData && categories && (
                     <StepReceiptReview

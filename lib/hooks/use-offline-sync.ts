@@ -12,6 +12,7 @@ export function useOfflineSync() {
     const pendingCount = useLiveQuery(async () => {
         const [
             expenses,
+            transfers,
             categories,
             subcategories,
             recurring,
@@ -19,13 +20,14 @@ export function useOfflineSync() {
             accounts
         ] = await Promise.all([
             db.expenses.where('sync_status').equals('pending').count(),
+            db.transfers.where('sync_status').equals('pending').count(),
             db.categories.where('sync_status').equals('pending').count(),
             db.subcategories.where('sync_status').equals('pending').count(),
             db.recurring_expenses.where('sync_status').equals('pending').count(),
             db.budgets.where('sync_status').equals('pending').count(),
             db.accounts.where('sync_status').equals('pending').count(),
         ]);
-        return expenses + categories + subcategories + recurring + budgets + accounts;
+        return expenses + transfers + categories + subcategories + recurring + budgets + accounts;
     }, [], 0);
 
     useEffect(() => {
@@ -42,7 +44,7 @@ export function useOfflineSync() {
         };
     }, []);
 
-    // Process recurring expenses - extracted to hook scope so it can run offline
+    // Process recurring expenses
     const processRecurringExpenses = useCallback(async (userId: string) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -50,7 +52,7 @@ export function useOfflineSync() {
         const allRecurring = await db.recurring_expenses.toArray();
 
         for (const recurring of allRecurring) {
-            if (recurring.deleted_at) continue; // Skip deleted items
+            if (recurring.deleted_at) continue;
             if (!recurring.active) continue;
 
             const nextDue = new Date(recurring.next_due_date);
@@ -110,7 +112,6 @@ export function useOfflineSync() {
         try {
             // --- 0. Sync Categories ---
             console.log('[SYNC] Syncing categories...');
-            // PUSH pending categories first
             const pendingCategories = await db.categories.where('sync_status').equals('pending').toArray();
             
             for (const category of pendingCategories) {
@@ -134,7 +135,6 @@ export function useOfflineSync() {
                 }
             }
 
-            // PULL remote categories
             const { data: remoteCategories, error: categoriesError } = await supabase
                 .from('categories')
                 .select('*')
@@ -167,10 +167,8 @@ export function useOfflineSync() {
                     });
                     if (error) {
                         console.error('[SYNC] Error pushing subcategory:', sub.id, error);
-                        // Handle FK violation for category
-                        if (error.code === '23503') { // Foreign key violation
+                        if (error.code === '23503') {
                             const catId = sub.category_id;
-                            console.warn(`[SYNC] Subcategory failed due to missing category ${catId}. Marking category as pending.`);
                             await db.categories.update(catId, { sync_status: 'pending' });
                         }
                     } else {
@@ -197,7 +195,6 @@ export function useOfflineSync() {
                     }
                 }
             }
-
 
             // --- 1. Sync Accounts ---
             console.log('[SYNC] Syncing accounts...');
@@ -265,32 +262,12 @@ export function useOfflineSync() {
 
                     if (error) {
                         console.error('[SYNC] Error pushing expense:', expense.id, error);
-                        
-                        // RECOVERY LOGIC: Check for Foreign Key Violations
                         if (error.code === '23503') { 
-                            // 23503 is Postgres code for foreign_key_violation
-                            if (error.details && error.details.includes('accounts')) {
-                                // Account missing
-                                if (expense.account_id) {
-                                    console.warn(`[SYNC] Expense failed due to missing account ${expense.account_id}. Marking account as pending.`);
-                                    // Check if we have this account locally
-                                    const localAccount = await db.accounts.get(expense.account_id);
-                                    if (localAccount) {
-                                        // Mark as pending so it gets pushed again next loop
-                                        await db.accounts.update(expense.account_id, { sync_status: 'pending' });
-                                    }
-                                }
+                            if (error.details && error.details.includes('accounts') && expense.account_id) {
+                                await db.accounts.update(expense.account_id, { sync_status: 'pending' });
                             }
-                            
-                            if (error.details && error.details.includes('categories')) {
-                                // Category missing
-                                if (expense.category_id) {
-                                    console.warn(`[SYNC] Expense failed due to missing category ${expense.category_id}. Marking category as pending.`);
-                                    const localCat = await db.categories.get(expense.category_id);
-                                    if (localCat) {
-                                        await db.categories.update(expense.category_id, { sync_status: 'pending' });
-                                    }
-                                }
+                            if (error.details && error.details.includes('categories') && expense.category_id) {
+                                await db.categories.update(expense.category_id, { sync_status: 'pending' });
                             }
                         }
                     } else {
@@ -301,20 +278,15 @@ export function useOfflineSync() {
                 }
             }
 
-            // PULL Expenses
             const lastSync = localStorage.getItem('last_expense_sync');
             let query = supabase.from('expenses').select('*').eq('user_id', userId);
-
-            if (lastSync) {
-                query = query.gt('updated_at', lastSync);
-            }
+            if (lastSync) query = query.gt('updated_at', lastSync);
 
             const { data: remoteExpenses, error: fetchError } = await query;
 
             if (remoteExpenses && !fetchError) {
                 for (const remoteExpense of remoteExpenses) {
                     const localExpense = await db.expenses.get(remoteExpense.id);
-                    // Overwrite if synced or missing. Preserve local pending changes.
                     if (!localExpense || localExpense.sync_status === 'synced') {
                         await db.expenses.put({
                             ...remoteExpense,
@@ -332,6 +304,55 @@ export function useOfflineSync() {
                 }
             }
 
+            // --- 2.5 Sync Transfers ---
+            console.log('[SYNC] Syncing transfers...');
+            const pendingTransfers = await db.transfers.where('sync_status').equals('pending').toArray();
+
+            for (const transfer of pendingTransfers) {
+                try {
+                    const { error } = await supabase.from('transfers').upsert({
+                        id: transfer.id,
+                        user_id: transfer.user_id,
+                        from_account_id: transfer.from_account_id,
+                        to_account_id: transfer.to_account_id,
+                        amount: transfer.amount,
+                        note: transfer.note,
+                        date: transfer.date,
+                        created_at: transfer.created_at,
+                        updated_at: transfer.updated_at,
+                        deleted_at: transfer.deleted_at,
+                    });
+
+                    if (error) {
+                        console.error('[SYNC] Error pushing transfer:', transfer.id, error);
+                        if (error.code === '23503') { // FK Violation
+                            if (transfer.from_account_id) await db.accounts.update(transfer.from_account_id, { sync_status: 'pending' });
+                            if (transfer.to_account_id) await db.accounts.update(transfer.to_account_id, { sync_status: 'pending' });
+                        }
+                    } else {
+                        await db.transfers.update(transfer.id, { sync_status: 'synced' });
+                    }
+                } catch (error) {
+                    console.error('[SYNC] Failed to sync transfer:', transfer.id, error);
+                }
+            }
+
+            const { data: remoteTransfers, error: transfersError } = await supabase
+                .from('transfers')
+                .select('*')
+                .eq('user_id', userId);
+
+            if (remoteTransfers && !transfersError) {
+                for (const remoteTransfer of remoteTransfers) {
+                    const localTransfer = await db.transfers.get(remoteTransfer.id);
+                    if (!localTransfer || localTransfer.sync_status === 'synced') {
+                        await db.transfers.put({
+                            ...remoteTransfer,
+                            sync_status: 'synced',
+                        });
+                    }
+                }
+            }
 
             // --- 3. Sync Recurring Expenses ---
             console.log('[SYNC] Syncing recurring expenses...');
@@ -355,7 +376,6 @@ export function useOfflineSync() {
 
                     if (error) {
                         console.error('[SYNC] Error pushing recurring expense:', item.id, error);
-                         // Recovery for Category FK
                          if (error.code === '23503' && item.category_id) {
                             await db.categories.update(item.category_id, { sync_status: 'pending' });
                         }
@@ -406,7 +426,6 @@ export function useOfflineSync() {
 
                     if (error) {
                         console.error('[SYNC] Error pushing budget:', budget.id, error);
-                         // Recovery for Category FK
                          if (error.code === '23503' && budget.category_id) {
                             await db.categories.update(budget.category_id, { sync_status: 'pending' });
                         }

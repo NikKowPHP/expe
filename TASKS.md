@@ -2,4 +2,4 @@
 - [x] Create test user (dev@dev.dev / a) and seed initial data.
 - [x] Fix Recurring Expenses deletion issue (ensure soft-deleted items are filtered out in UI).
 - [x] Make Main Index Page Desktop Friendly (SideNav + Grid Layout).
-      
+- [x] Implement Account Transfers (DB, Sync, UI, Balances).
