@@ -4,3 +4,4 @@
 - [x] Make Main Index Page Desktop Friendly (SideNav + Grid Layout).
 - [x] Implement Account Transfers (DB, Sync, UI, Balances).
 - [x] Refine Analytics (Split Income/Expense, Savings Rate).
+- [x] Implement Subcategory Management (Settings UI + Manual Selection in Add Expense).

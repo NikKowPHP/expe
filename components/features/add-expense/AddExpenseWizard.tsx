@@ -81,7 +81,6 @@ export function AddExpenseWizard() {
     };
 
     const handleScanReceipt = async (e: React.ChangeEvent<HTMLInputElement>, selectedAccountId?: string) => {
-        // ... existing scan logic ...
         const file = e.target.files?.[0];
         if (!file) return;
 
@@ -158,7 +157,6 @@ export function AddExpenseWizard() {
     };
 
     const handleReceiptSave = async (items: ReceiptItem[], merchant: string, receiptDate: Date, shouldSplit: boolean) => {
-        // ... existing save logic ...
         if (!userId) return;
         if (!accountId) {
             alert('Please select an account before saving.');
@@ -316,12 +314,17 @@ export function AddExpenseWizard() {
         router.push('/');
     };
 
-    const handleDetailsSubmit = async (finalNote: string, finalDate: Date, isRecurring: boolean, frequency: 'daily' | 'weekly' | 'monthly' | 'yearly') => {
+    const handleDetailsSubmit = async (
+        finalNote: string, 
+        finalDate: Date, 
+        isRecurring: boolean, 
+        frequency: 'daily' | 'weekly' | 'monthly' | 'yearly', 
+        subcategoryId?: string
+    ) => {
         if (!userId) return;
 
         try {
             if (transactionType === 'transfer') {
-                // HANDLE TRANSFER
                 if (!accountId || !toAccountId) {
                     console.error('Missing account info for transfer');
                     return;
@@ -341,7 +344,14 @@ export function AddExpenseWizard() {
                 });
 
             } else {
-                // HANDLE INCOME/EXPENSE
+                // Build Items Array if subcategory is present
+                const items = subcategoryId ? [{
+                    description: finalNote,
+                    amount: parseFloat(amount),
+                    category_id: categoryId,
+                    subcategory_id: subcategoryId
+                }] : undefined;
+
                 await db.expenses.add({
                     id: uuidv4(),
                     user_id: userId,
@@ -349,6 +359,7 @@ export function AddExpenseWizard() {
                     category_id: categoryId,
                     amount: parseFloat(amount),
                     note: finalNote,
+                    items: items, // Attach subcategory info here
                     date: finalDate.toISOString(),
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString(),
@@ -409,6 +420,7 @@ export function AddExpenseWizard() {
                         key="step3" 
                         onSubmit={handleDetailsSubmit} 
                         onBack={() => setStep(transactionType === 'transfer' ? 1 : 2)} 
+                        categoryId={categoryId}
                     />
                 )}
                 {step === 4 && scannedData && categories && (

@@ -3,13 +3,14 @@
 import { useState, useEffect, type ReactNode, type ElementType } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db/db';
-import { Moon, Sun, Database, Download, Trash, Info, DollarSign, Bell, LogOut, User, RefreshCw, Wallet, Cloud } from 'lucide-react';
+import { Moon, Sun, Database, Download, Trash, Info, DollarSign, Bell, LogOut, User, RefreshCw, Wallet, Cloud, Layers } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { useTheme } from 'next-themes';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { CategoryManager } from '@/components/features/categories/CategoryManager';
+import { SubcategoryManager } from '@/components/features/categories/SubcategoryManager';
 import { BudgetManager } from '@/components/features/budgets/BudgetManager';
 import { RecurringExpensesList } from '@/components/features/expenses/RecurringExpensesList';
 import { AccountManager } from '@/components/features/accounts/AccountManager';
@@ -319,6 +320,15 @@ export default function SettingsPage() {
                 description="Manage your expense categories"
             >
                 <CategoryManager />
+            </SettingSection>
+
+            {/* Subcategory Management */}
+            <SettingSection
+                icon={Layers}
+                title="Subcategories"
+                description="Manage specific sub-groups within categories"
+            >
+                <SubcategoryManager />
             </SettingSection>
 
             {/* Account Management */}

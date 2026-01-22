@@ -2,21 +2,27 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ArrowLeft, Check, Calendar } from 'lucide-react';
+import { ArrowLeft, Check, Calendar, Tag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { format } from 'date-fns';
+import { useSubcategories } from '@/lib/hooks/use-subcategories';
 
 interface StepDetailsProps {
-    onSubmit: (note: string, date: Date, isRecurring: boolean, frequency: 'daily' | 'weekly' | 'monthly' | 'yearly') => void;
+    onSubmit: (note: string, date: Date, isRecurring: boolean, frequency: 'daily' | 'weekly' | 'monthly' | 'yearly', subcategoryId?: string) => void;
     onBack: () => void;
+    categoryId?: string; // New prop to filter subcategories
 }
 
-export function StepDetails({ onSubmit, onBack }: StepDetailsProps) {
+export function StepDetails({ onSubmit, onBack, categoryId }: StepDetailsProps) {
     const [note, setNote] = useState('');
     const [date, setDate] = useState(new Date());
     const [isRecurring, setIsRecurring] = useState(false);
     const [frequency, setFrequency] = useState<'daily' | 'weekly' | 'monthly' | 'yearly'>('monthly');
+    const [subcategoryId, setSubcategoryId] = useState<string>('');
     const inputRef = useRef<HTMLInputElement>(null);
+
+    // Fetch subcategories for this category
+    const { subcategories } = useSubcategories(categoryId);
 
     useEffect(() => {
         inputRef.current?.focus();
@@ -24,7 +30,7 @@ export function StepDetails({ onSubmit, onBack }: StepDetailsProps) {
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter') {
-            onSubmit(note, date, isRecurring, frequency);
+            onSubmit(note, date, isRecurring, frequency, subcategoryId || undefined);
         }
     };
 
@@ -55,6 +61,26 @@ export function StepDetails({ onSubmit, onBack }: StepDetailsProps) {
                         placeholder="What was this for?"
                     />
                 </div>
+
+                {/* Subcategory Selection (Only if available) */}
+                {subcategories.length > 0 && (
+                    <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-2">Subcategory</label>
+                        <div className="relative">
+                            <Tag className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                            <select
+                                value={subcategoryId}
+                                onChange={(e) => setSubcategoryId(e.target.value)}
+                                className="w-full p-4 pl-12 text-lg bg-secondary rounded-xl outline-none appearance-none"
+                            >
+                                <option value="">None</option>
+                                {subcategories.map(sub => (
+                                    <option key={sub.id} value={sub.id}>{sub.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+                )}
 
                 <div>
                     <label className="block text-sm font-medium text-muted-foreground mb-2">Date</label>
@@ -97,7 +123,7 @@ export function StepDetails({ onSubmit, onBack }: StepDetailsProps) {
                 <Button
                     size="lg"
                     className="w-full h-14 text-lg rounded-xl"
-                    onClick={() => onSubmit(note, date, isRecurring, frequency)}
+                    onClick={() => onSubmit(note, date, isRecurring, frequency, subcategoryId || undefined)}
                 >
                     <Check className="w-6 h-6 mr-2" />
                     Save Expense
