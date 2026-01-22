@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
+import { db } from '@/lib/db/db';
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
     const [loading, setLoading] = useState(true);
@@ -16,6 +17,27 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
             const { data: { user } } = await supabase.auth.getUser();
 
             if (user) {
+                // Security Check: Verify that the local data belongs to this user
+                // We check one table (e.g. categories) to see if there are records with a DIFFERENT user_id
+                const otherUserCategory = await db.categories
+                    .where('user_id')
+                    .notEqual(user.id)
+                    .first();
+
+                if (otherUserCategory) {
+                    console.warn('AuthGuard: Detected data from another user. Clearing local database.');
+                    await Promise.all([
+                        db.expenses.clear(),
+                        db.categories.clear(),
+                        db.subcategories.clear(),
+                        db.accounts.clear(),
+                        db.budgets.clear(),
+                        db.recurring_expenses.clear()
+                    ]);
+                    // Clear sync timestamp
+                    localStorage.removeItem('last_expense_sync');
+                }
+
                 setAuthenticated(true);
             } else {
                 router.push('/login');
@@ -31,6 +53,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
             if (event === 'SIGNED_OUT') {
                 router.push('/login');
             } else if (event === 'SIGNED_IN') {
+                // We could re-run checkAuth here, but usually page reload handles it
                 setAuthenticated(true);
             }
         });
