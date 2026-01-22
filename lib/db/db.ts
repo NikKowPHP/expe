@@ -38,6 +38,7 @@ export interface RecurringExpense {
     active: boolean;
     created_at: string;
     updated_at: string;
+    deleted_at?: string | null; // Soft delete timestamp
     sync_status: 'synced' | 'pending' | 'error';
 }
 
@@ -82,9 +83,9 @@ export class ExpenseDatabase extends Dexie {
 
     constructor() {
         super('ExpenseTrackerDB');
-        this.version(7).stores({
+        this.version(8).stores({
             expenses: 'id, user_id, category_id, account_id, date, sync_status, deleted_at', // id is primary key
-            recurring_expenses: 'id, user_id, category_id, next_due_date, active, sync_status',
+            recurring_expenses: 'id, user_id, category_id, next_due_date, active, sync_status, deleted_at',
             categories: 'id, user_id, type, sync_status',
             subcategories: 'id, user_id, category_id, name, sync_status',
             budgets: 'id, user_id, category_id, [month+year], sync_status',

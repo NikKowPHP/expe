@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { db } from '@/lib/db/db';
 import { createClient } from '@/lib/supabase/client';
 // We'll assume we have a user from a context or just check auth.
@@ -7,6 +8,26 @@ export function useOfflineSync() {
     const [isOnline, setIsOnline] = useState(true);
     const [isSyncing, setIsSyncing] = useState(false);
     const supabase = createClient();
+
+    // Track pending items
+    const pendingCount = useLiveQuery(async () => {
+        const [
+            expenses,
+            categories,
+            subcategories,
+            recurring,
+            budgets,
+            accounts
+        ] = await Promise.all([
+            db.expenses.where('sync_status').equals('pending').count(),
+            db.categories.where('sync_status').equals('pending').count(),
+            db.subcategories.where('sync_status').equals('pending').count(),
+            db.recurring_expenses.where('sync_status').equals('pending').count(),
+            db.budgets.where('sync_status').equals('pending').count(),
+            db.accounts.where('sync_status').equals('pending').count(),
+        ]);
+        return expenses + categories + subcategories + recurring + budgets + accounts;
+    }, [], 0);
 
     useEffect(() => {
         setIsOnline(navigator.onLine);
@@ -32,6 +53,7 @@ export function useOfflineSync() {
         const allRecurring = await db.recurring_expenses.toArray();
 
         for (const recurring of allRecurring) {
+            if (recurring.deleted_at) continue; // Skip deleted items
             if (!recurring.active) continue;
 
             const nextDue = new Date(recurring.next_due_date);
@@ -340,6 +362,7 @@ export function useOfflineSync() {
                         active: item.active,
                         created_at: item.created_at,
                         updated_at: item.updated_at,
+                        deleted_at: item.deleted_at,
                     });
 
                     if (error) {
@@ -370,6 +393,7 @@ export function useOfflineSync() {
                         await db.recurring_expenses.put({
                             ...item,
                             sync_status: 'synced',
+                            deleted_at: item.deleted_at,
                         });
                     }
                 }
@@ -461,5 +485,5 @@ export function useOfflineSync() {
         }
     }, [isOnline, syncExpenses]);
 
-    return { isOnline, isSyncing, syncExpenses };
+    return { isOnline, isSyncing, syncExpenses, pendingCount };
 }
