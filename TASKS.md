@@ -5,3 +5,7 @@
 - [x] Implement Account Transfers (DB, Sync, UI, Balances).
 - [x] Refine Analytics (Split Income/Expense, Savings Rate).
 - [x] Implement Subcategory Management (Settings UI + Manual Selection in Add Expense).
+- [x] Implement Global Search (Command Palette).
+- [x] Optimize History Page (Virtualization).
+- [x] Add Unit Tests for Financial Logic.
+        

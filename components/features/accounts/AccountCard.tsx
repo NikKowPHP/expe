@@ -4,6 +4,7 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { db, Account } from '@/lib/db/db';
 import { formatCurrency, getCurrency } from '@/lib/utils/currency';
 import { Wallet, CreditCard, Landmark } from 'lucide-react';
+import { calculateAccountBalance } from '@/lib/utils/finance';
 
 interface AccountCardProps {
     account: Account;
@@ -17,46 +18,23 @@ export function AccountCard({ account }: AccountCardProps) {
         const expenses = await db.expenses
             .where('account_id')
             .equals(account.id)
-            .filter(e => !e.deleted_at)
             .toArray();
         
         // 2. Fetch transfers where this account is the SENDER
         const transfersOut = await db.transfers
             .where('from_account_id')
             .equals(account.id)
-            .filter(t => !t.deleted_at)
             .toArray();
 
         // 3. Fetch transfers where this account is the RECEIVER
         const transfersIn = await db.transfers
             .where('to_account_id')
             .equals(account.id)
-            .filter(t => !t.deleted_at)
             .toArray();
 
         const categories = await db.categories.toArray();
         
-        let balance = account.balance; // Start with initial balance
-
-        // Process expenses/income
-        for (const expense of expenses) {
-            const category = categories.find(c => c.id === expense.category_id);
-            if (category?.type === 'income') {
-                balance += expense.amount;
-            } else {
-                balance -= expense.amount;
-            }
-        }
-
-        // Process transfers
-        for (const t of transfersOut) {
-            balance -= t.amount;
-        }
-        for (const t of transfersIn) {
-            balance += t.amount;
-        }
-
-        return balance;
+        return calculateAccountBalance(account, expenses, transfersIn, transfersOut, categories);
     }, [account.id, account.balance]);
 
     const getIcon = () => {
@@ -86,3 +64,4 @@ export function AccountCard({ account }: AccountCardProps) {
         </div>
     );
 }
+        
