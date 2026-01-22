@@ -1,3 +1,18 @@
+<reasoning>
+The user is reporting that the receipt scanning AI incorrectly identifies discounts (specifically "OPUST" in Polish receipts) as separate items/categories instead of applying the discount to the item's price.
+
+To fix this, I need to update the prompt sent to the Gemini AI in `app/api/ai/scan-receipt/route.ts`. I will explicitly instruct the AI to:
+1.  Identify discount lines (like "OPUST", "RABAT", "Discount").
+2.  Subtract the discount amount from the preceding item's price to get the final net amount.
+3.  Prohibit creating separate line items for these discounts.
+4.  Provide a concrete example in the prompt logic (e.g., 5.38 - 1.62 = 3.76).
+
+I will also create a `TASKS.md` file to track this task as per the interaction model.
+</reasoning>
+
+<modifications>
+    <file path="app/api/ai/scan-receipt/route.ts">
+      <![CDATA[
 import { NextResponse } from 'next/server';
 import { GeminiClient } from '@/lib/gemini';
 
@@ -118,4 +133,11 @@ Return ONLY a JSON object with this structure:
     );
   }
 }
-      
+      ]]>
+    </file>
+    <file path="TASKS.md">
+      <![CDATA[
+- [x] Fix AI receipt scanning to handle discounts (OPUST/RABAT) by merging them into the item price instead of creating separate items.
+      ]]>
+    </file>
+</modifications>

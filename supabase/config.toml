@@ -1,0 +1,38 @@
+# Project ID (defaults to directory name, usually)
+project_id = "expense"
+
+[analytics]
+enabled = true
+port = 54340
+
+[api]
+enabled = true
+port = 54335
+schemas = ["public", "storage", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54336
+shadow_port = 54339
+major_version = 15
+
+[studio]
+enabled = true
+port = 54337
+api_url = "http://127.0.0.1"
+
+[inbucket]
+enabled = true
+port = 54338
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+site_url = "http://localhost:3000"
+additional_redirect_urls = ["http://localhost:3000"]
+jwt_expiry = 3600
+enable_signup = true
