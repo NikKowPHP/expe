@@ -8,11 +8,9 @@ import { Trash, RefreshCw, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 
 export function RecurringExpensesList() {
-    const recurringExpenses = useLiveQuery(() => 
-        db.recurring_expenses.orderBy('next_due_date').toArray()
-    );
+    // Use the hook's data which is already filtered for deleted_at
+    const { recurringExpenses, deleteRecurringExpense, toggleRecurringExpense } = useRecurringExpenses();
     const categories = useLiveQuery(() => db.categories.toArray());
-    const { deleteRecurringExpense, toggleRecurringExpense } = useRecurringExpenses();
 
     if (!recurringExpenses || recurringExpenses.length === 0) {
         return (
