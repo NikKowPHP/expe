@@ -2,35 +2,122 @@
 
 import { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, Expense } from '@/lib/db/db';
+import { db, Expense, Transfer, Category, Account } from '@/lib/db/db';
 import { useExpenseMutations } from '@/lib/hooks/use-expense-mutations';
+import { useTransferMutations } from '@/lib/hooks/use-transfer-mutations';
 import { getIconComponent } from '@/lib/utils/icons';
-import { Search } from 'lucide-react'; // X, Trash2, Calendar, DollarSign removed as they are used inside Row now
+import { Search, Filter, ArrowRightLeft, DollarSign } from 'lucide-react';
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { formatCurrency, getCurrency } from '@/lib/utils/currency';
 import { ExpenseDetailsModal } from '@/components/features/expenses/ExpenseDetailsModal';
+import { TransferDetailsModal } from '@/components/features/transfers/TransferDetailsModal';
 import { AnimatePresence } from 'framer-motion';
-import * as ReactWindow from 'react-window';
-import { AutoSizer } from 'react-virtualized-auto-sizer'; // Fixed Import
-import { Trash2, Calendar, DollarSign } from 'lucide-react'; // Re-adding for Row component usage
+import { List } from 'react-window';
+import { AutoSizer } from 'react-virtualized-auto-sizer';
+import { cn } from '@/lib/utils';
+import { CSSProperties } from 'react';
+
+type Transaction = (Expense & { type: 'expense' }) | (Transfer & { type: 'transfer' });
+
+interface RowProps {
+    transactions: Transaction[];
+    categories: Category[];
+    accounts: Account[];
+    currency: string;
+    onClick: (t: Transaction) => void;
+}
+
+const Row = ({ index, style, transactions, categories, accounts, currency, onClick }: { index: number; style: CSSProperties } & RowProps) => {
+    const item = transactions[index];
+    const isTransfer = item.type === 'transfer';
+
+    const getCategoryById = (id: string) => categories.find(c => c.id === id);
+    const getAccountById = (id: string) => accounts.find(a => a.id === id);
+
+    let Icon, color, title, subtitle;
+
+    if (isTransfer) {
+        Icon = ArrowRightLeft;
+        color = 'bg-blue-100 text-blue-600';
+        const from = getAccountById((item as Transfer).from_account_id)?.name || 'Unknown';
+        const to = getAccountById((item as Transfer).to_account_id)?.name || 'Unknown';
+        title = 'Transfer';
+        subtitle = `${from} → ${to}`;
+    } else {
+        const cat = getCategoryById((item as Expense).category_id);
+        Icon = cat ? getIconComponent(cat.icon) : DollarSign;
+        color = cat?.color || 'bg-primary/10';
+        title = cat?.name || 'Expense';
+        subtitle = item.note || (cat?.type === 'income' ? 'Income' : 'Expense');
+    }
+
+    return (
+        <div style={style} className="px-1 pb-2">
+            <div 
+                onClick={() => onClick(item)}
+                className="flex items-center gap-4 p-4 bg-card rounded-2xl border border-border cursor-pointer hover:bg-secondary/50 transition-colors h-full"
+            >
+                <div className={cn("w-12 h-12 rounded-xl flex items-center justify-center shrink-0", color)}>
+                    <Icon className="w-6 h-6" />
+                </div>
+                
+                <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-start">
+                        <p className="font-semibold truncate pr-2">{title}</p>
+                        <span className={cn(
+                            "font-bold whitespace-nowrap",
+                            isTransfer ? "text-blue-600" : 
+                            (item as Expense).category_id && getCategoryById((item as Expense).category_id)?.type === 'income' 
+                                ? "text-green-600" 
+                                : "text-foreground"
+                        )}>
+                            {isTransfer ? '' : (getCategoryById((item as Expense).category_id)?.type === 'income' ? '+' : '-')}
+                            {formatCurrency(item.amount, currency)}
+                        </span>
+                    </div>
+                    
+                    <div className="flex justify-between items-center mt-1">
+                        <p className="text-sm text-muted-foreground truncate max-w-[70%]">
+                            {subtitle}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                            {format(parseISO(item.date), 'MMM d')}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 export default function HistoryPage() {
-    const expenses = useLiveQuery(() => db.expenses.orderBy('date').filter(e => !e.deleted_at).reverse().toArray());
+    // Fetch Data
+    const expenses = useLiveQuery(() => db.expenses.filter(e => !e.deleted_at).toArray());
+    const transfers = useLiveQuery(() => db.transfers.filter(t => !t.deleted_at).toArray());
     const categories = useLiveQuery(() => db.categories.toArray());
-    const { deleteExpense } = useExpenseMutations();
+    const accounts = useLiveQuery(() => db.accounts.toArray());
+
+    const { deleteTransfer } = useTransferMutations();
+    
     const currency = getCurrency();
 
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
     const [sortBy, setSortBy] = useState<'date' | 'amount'>('date');
     const [dateRange, setDateRange] = useState<'all' | 'month' | '3months'>('all');
+    
+    // Selection state
     const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
+    const [selectedTransfer, setSelectedTransfer] = useState<Transfer | null>(null);
 
-    // Filter and sort expenses
-    const filteredExpenses = useMemo(() => {
-        if (!expenses) return [];
+    // Combine and Filter
+    const filteredTransactions = useMemo(() => {
+        if (!expenses || !transfers) return [];
 
-        let filtered = [...expenses];
+        let items: Transaction[] = [
+            ...expenses.map(e => ({ ...e, type: 'expense' as const })),
+            ...transfers.map(t => ({ ...t, type: 'transfer' as const }))
+        ];
 
         // Date range filter
         if (dateRange !== 'all') {
@@ -40,110 +127,75 @@ export default function HistoryPage() {
                 : subMonths(now, 3);
             const end = endOfMonth(now);
 
-            filtered = filtered.filter(expense => {
-                const expenseDate = parseISO(expense.date);
-                return isWithinInterval(expenseDate, { start, end });
+            items = items.filter(item => {
+                const date = parseISO(item.date);
+                return isWithinInterval(date, { start, end });
             });
         }
 
         // Category filter
         if (selectedCategory) {
-            filtered = filtered.filter(e => e.category_id === selectedCategory);
+            items = items.filter(item => 
+                item.type === 'expense' && item.category_id === selectedCategory
+            );
         }
 
         // Search filter
         if (searchTerm) {
-            filtered = filtered.filter(e =>
-                e.note?.toLowerCase().includes(searchTerm.toLowerCase())
+            const lowerTerm = searchTerm.toLowerCase();
+            items = items.filter(item =>
+                item.note?.toLowerCase().includes(lowerTerm) ||
+                (item.type === 'expense' && item.items?.some(i => i.description.toLowerCase().includes(lowerTerm)))
             );
         }
 
         // Sort
         if (sortBy === 'amount') {
-            filtered.sort((a, b) => b.amount - a.amount);
+            items.sort((a, b) => b.amount - a.amount);
         } else {
-            filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         }
 
-        return filtered;
-    }, [expenses, searchTerm, selectedCategory, sortBy, dateRange]);
+        return items;
+    }, [expenses, transfers, searchTerm, selectedCategory, sortBy, dateRange]);
 
-    const getCategoryById = (id: string) => {
-        return categories?.find(c => c.id === id);
-    };
+    const getCategoryById = (id: string) => categories?.find(c => c.id === id);
+    const getAccountById = (id: string) => accounts?.find(a => a.id === id);
 
-    const handleDelete = async (id: string) => {
-        if (confirm('Delete this expense?')) {
-            await deleteExpense(id);
+    const handleTransactionClick = (transaction: Transaction) => {
+        if (transaction.type === 'expense') {
+            setSelectedExpense(transaction);
+        } else {
+            setSelectedTransfer(transaction);
         }
     };
 
-    const totalAmount = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
-
-    // Row component for react-window
-    const Row = ({ index, style }: { index: number, style: React.CSSProperties }) => {
-        const expense = filteredExpenses[index];
-        const category = getCategoryById(expense.category_id);
-        const CategoryIcon = category ? getIconComponent(category.icon) : DollarSign;
-
-        return (
-            <div style={style} className="px-1 pb-2">
-                <div className="relative overflow-hidden rounded-2xl h-full">
-                    {/* Delete action background (simplified for virtual list - drag is tricky, so simplified to click for now or we rely on modal) */}
-                    <div 
-                        onClick={() => setSelectedExpense(expense)}
-                        className="relative flex items-center gap-4 p-4 bg-card rounded-2xl border border-border z-10 cursor-pointer hover:bg-secondary/50 transition-colors h-full"
-                    >
-                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${category?.color || 'bg-primary/10'}`}>
-                            <CategoryIcon className="w-6 h-6" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="font-semibold">{category?.name || 'Unknown'}</p>
-                            {expense.note && (
-                                <p className="text-sm text-muted-foreground truncate">{expense.note}</p>
-                            )}
-                            <p className="text-xs text-muted-foreground">
-                                {format(parseISO(expense.date), 'MMM d, yyyy')}
-                            </p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <span className="font-bold text-lg">{formatCurrency(expense.amount, currency)}</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    };
-
-    if (!expenses || !categories) {
-        return <div className="p-6">Loading...</div>;
+    if (!expenses || !categories || !transfers || !accounts) {
+        return <div className="p-6 flex justify-center items-center h-full">Loading...</div>;
     }
 
     return (
         <div className="p-6 space-y-6 h-[calc(100vh-80px)] md:h-screen flex flex-col">
-            {/* Header - Fixed height */}
             <div className="shrink-0 space-y-6">
                 <div>
                     <h1 className="text-3xl font-bold mb-2">History</h1>
                     <p className="text-muted-foreground">
-                        {filteredExpenses.length} expense{filteredExpenses.length !== 1 ? 's' : ''} · {formatCurrency(totalAmount, currency)} total
+                        {filteredTransactions.length} transactions
                     </p>
                 </div>
 
-                {/* Search Bar */}
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                     <input
                         type="text"
-                        placeholder="Search expenses..."
+                        placeholder="Search notes, amounts..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full pl-10 pr-4 py-3 bg-card border border-border rounded-2xl focus:outline-none focus:ring-2 focus:ring-primary"
                     />
                 </div>
 
-                {/* Filters */}
-                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                <div className="flex gap-2 overflow-x-auto pb-2 no-scrollbar">
                     <select
                         value={dateRange}
                         onChange={(e) => setDateRange(e.target.value as any)}
@@ -163,39 +215,54 @@ export default function HistoryPage() {
                         <option value="amount">Sort by Amount</option>
                     </select>
 
-                    {categories.filter(c => c.type === 'expense').map(cat => (
-                        <button
-                            key={cat.id}
-                            onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)}
-                            className={`px-4 py-2 rounded-xl text-sm whitespace-nowrap transition-colors ${selectedCategory === cat.id
-                                    ? 'bg-primary text-primary-foreground'
-                                    : 'bg-card border border-border'
-                                }`}
-                        >
-                            {cat.icon} {cat.name}
-                        </button>
-                    ))}
+                    {categories.filter(c => c.type === 'expense').map(cat => {
+                        const Icon = getIconComponent(cat.icon);
+                        return (
+                            <button
+                                key={cat.id}
+                                onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)}
+                                className={cn(
+                                    "px-3 py-2 rounded-xl text-sm whitespace-nowrap transition-colors flex items-center gap-2 border",
+                                    selectedCategory === cat.id
+                                        ? "bg-primary text-primary-foreground border-primary"
+                                        : "bg-card border-border hover:bg-secondary"
+                                )}
+                            >
+                                <Icon className="w-3.5 h-3.5" />
+                                {cat.name}
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
 
-            {/* Expense List - Flexible height */}
             <div className="flex-1 min-h-0 bg-transparent rounded-2xl">
-                {filteredExpenses.length === 0 ? (
+                {filteredTransactions.length === 0 ? (
                     <div className="text-center py-12 text-muted-foreground">
-                        <Calendar className="w-16 h-16 mx-auto mb-4 opacity-20" />
-                        <p>No expenses found</p>
+                        <Filter className="w-16 h-16 mx-auto mb-4 opacity-20" />
+                        <p>No transactions found</p>
                     </div>
                 ) : (
-                    <AutoSizer renderProp={({ height, width }: { height: number | undefined, width: number | undefined }) => (
-                            <ReactWindow.List
-                                style={{ width: width ?? 0, height: height ?? 0 }}
-                                rowCount={filteredExpenses.length}
-                                rowHeight={() => 90} // Fixed height estimate for row
-                                className="no-scrollbar"
-                                rowComponent={Row as any}
-                                rowProps={{}}
-                            />
-                        )}
+                    <AutoSizer
+                        renderProp={({ height, width }) => {
+                            if (!height || !width) return null;
+                            return (
+                                <List<RowProps>
+                                    style={{ width, height }}
+                                    rowCount={filteredTransactions.length}
+                                    rowHeight={88}
+                                    rowComponent={Row}
+                                    rowProps={{
+                                        transactions: filteredTransactions,
+                                        categories,
+                                        accounts,
+                                        currency,
+                                        onClick: handleTransactionClick
+                                    }}
+                                    className="no-scrollbar"
+                                />
+                            );
+                        }}
                     />
                 )}
             </div>
@@ -206,6 +273,15 @@ export default function HistoryPage() {
                         expense={selectedExpense} 
                         onClose={() => setSelectedExpense(null)} 
                         getCategoryById={getCategoryById}
+                    />
+                )}
+                {selectedTransfer && (
+                    <TransferDetailsModal
+                        transfer={selectedTransfer}
+                        fromAccount={getAccountById(selectedTransfer.from_account_id)}
+                        toAccount={getAccountById(selectedTransfer.to_account_id)}
+                        onClose={() => setSelectedTransfer(null)}
+                        onDelete={deleteTransfer}
                     />
                 )}
             </AnimatePresence>

@@ -11,7 +11,10 @@ import { cn } from '@/lib/utils';
 import { getIconComponent } from '@/lib/utils/icons';
 
 export function SubcategoryManager() {
-  const categories = useLiveQuery(() => db.categories.orderBy('name').toArray());
+  const categories = useLiveQuery(async () => {
+    const all = await db.categories.toArray();
+    return all.sort((a, b) => a.name.localeCompare(b.name));
+  });
   const subcategories = useLiveQuery(() => db.subcategories.toArray());
   const { createSubcategory, updateSubcategory, deleteSubcategory } = useSubcategoryMutations();
 
