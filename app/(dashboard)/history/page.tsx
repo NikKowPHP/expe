@@ -1,17 +1,18 @@
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, Expense } from '@/lib/db/db';
 import { useExpenseMutations } from '@/lib/hooks/use-expense-mutations';
 import { getIconComponent } from '@/lib/utils/icons';
-import { Search, X, Trash2, Calendar, DollarSign } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Search } from 'lucide-react'; // X, Trash2, Calendar, DollarSign removed as they are used inside Row now
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { formatCurrency, getCurrency } from '@/lib/utils/currency';
 import { ExpenseDetailsModal } from '@/components/features/expenses/ExpenseDetailsModal';
-import { VariableSizeList as List } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
+import { AnimatePresence } from 'framer-motion';
+import * as ReactWindow from 'react-window';
+import { AutoSizer } from 'react-virtualized-auto-sizer'; // Fixed Import
+import { Trash2, Calendar, DollarSign } from 'lucide-react'; // Re-adding for Row component usage
 
 export default function HistoryPage() {
     const expenses = useLiveQuery(() => db.expenses.orderBy('date').filter(e => !e.deleted_at).reverse().toArray());
@@ -185,19 +186,17 @@ export default function HistoryPage() {
                         <p>No expenses found</p>
                     </div>
                 ) : (
-                    <AutoSizer>
-                        {({ height, width }) => (
-                            <List
-                                height={height}
-                                itemCount={filteredExpenses.length}
-                                itemSize={() => 90} // Fixed height estimate for row
-                                width={width}
+                    <AutoSizer renderProp={({ height, width }: { height: number | undefined, width: number | undefined }) => (
+                            <ReactWindow.List
+                                style={{ width: width ?? 0, height: height ?? 0 }}
+                                rowCount={filteredExpenses.length}
+                                rowHeight={() => 90} // Fixed height estimate for row
                                 className="no-scrollbar"
-                            >
-                                {Row}
-                            </List>
+                                rowComponent={Row as any}
+                                rowProps={{}}
+                            />
                         )}
-                    </AutoSizer>
+                    />
                 )}
             </div>
 
@@ -213,4 +212,3 @@ export default function HistoryPage() {
         </div>
     );
 }
-        

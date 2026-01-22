@@ -29,15 +29,14 @@ export function GlobalSearch({ isOpen, onClose }: { isOpen: boolean; onClose: ()
 
         const search = async () => {
             const lowerQuery = query.toLowerCase();
-            // Perform search across expenses
-            // Note: Dexie `filter` is full scan, but acceptable for client-side valid datasets (thousands)
-            // For large datasets, a dedicated search index (e.g. FlexSearch) would be better, but this suffices for "Polish".
             const matches = await db.expenses
-                .filter(e => !e.deleted_at && (
-                    (e.note && e.note.toLowerCase().includes(lowerQuery)) ||
-                    (e.amount.toString().includes(lowerQuery)) ||
-                    (e.items && e.items.some(i => i.description.toLowerCase().includes(lowerQuery)))
-                ))
+                .filter(e => {
+                    if (e.deleted_at) return false;
+                    const matchNote = !!(e.note && e.note.toLowerCase().includes(lowerQuery));
+                    const matchAmount = !!(e.amount.toString().includes(lowerQuery));
+                    const matchItems = !!(e.items && e.items.some(i => i.description.toLowerCase().includes(lowerQuery)));
+                    return matchNote || matchAmount || matchItems;
+                })
                 .limit(20)
                 .toArray();
             
@@ -136,4 +135,3 @@ export function GlobalSearch({ isOpen, onClose }: { isOpen: boolean; onClose: ()
         </AnimatePresence>
     );
 }
-        

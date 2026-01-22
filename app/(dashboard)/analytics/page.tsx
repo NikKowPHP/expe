@@ -350,7 +350,7 @@ export default function AnalyticsPage() {
                                         ))}
                                     </Pie>
                                     <Tooltip 
-                                        formatter={(value: number) => formatCurrency(value, currency)} 
+                                        formatter={(value: any) => formatCurrency(Number(value) || 0, currency)} 
                                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                                     />
                                     <Legend verticalAlign="bottom" height={36} iconType="circle" />
@@ -397,7 +397,7 @@ export default function AnalyticsPage() {
                                         axisLine={false}
                                     />
                                     <Tooltip 
-                                        formatter={(value: number) => formatCurrency(value, currency)}
+                                        formatter={(value: any) => formatCurrency(Number(value) || 0, currency)}
                                         cursor={{ fill: 'var(--muted)', opacity: 0.2 }}
                                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                                     />
@@ -406,7 +406,12 @@ export default function AnalyticsPage() {
                                         fill={viewType === 'expense' ? '#8884d8' : '#00C49F'} 
                                         radius={[0, 4, 4, 0]} 
                                         barSize={20}
-                                        label={{ position: 'right', formatter: (val: number) => formatCurrency(val, currency), fontSize: 12, fill: 'var(--muted-foreground)' }} 
+                                        label={{ 
+                                            position: 'right', 
+                                            formatter: (val: any) => formatCurrency(Number(val), currency), 
+                                            fontSize: 12, 
+                                            fill: 'var(--muted-foreground)' 
+                                        }} 
                                     />
                                 </BarChart>
                             </ResponsiveContainer>
@@ -433,7 +438,7 @@ export default function AnalyticsPage() {
                                     <XAxis dataKey="name" tickLine={false} axisLine={false} />
                                     <YAxis tickLine={false} axisLine={false} />
                                     <Tooltip 
-                                        formatter={(value: number) => formatCurrency(value, currency)}
+                                        formatter={(value: any) => formatCurrency(Number(value) || 0, currency)}
                                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                                     />
                                     <Legend />

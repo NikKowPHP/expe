@@ -1,579 +1,495 @@
-<reasoning>
-I will implement Phase 4: Polish & Performance.
+My apologies. I will address the TypeScript errors identified in the `ts-check`.
 
-1.  **Refactor & Test Critical Logic**:
-    *   Extract the account balance calculation logic (which now involves expenses, income, and transfers) into a pure function `calculateAccountBalance` in `lib/utils/finance.ts`.
-    *   Create a unit test file `lib/utils/finance.test.ts` to verify this logic handles all cases correctly.
-    *   Add `vitest` to run the tests.
+### Plan
 
-2.  **Global Search**:
-    *   Create a `GlobalSearch` component (`components/features/search/GlobalSearch.tsx`) that acts as a command palette (triggered by Cmd+K or a button).
-    *   It will query Dexie for expenses matching the search term (note, amount, or receipt items).
-    *   Integrate this component into the `DashboardLayout`.
+1.  **Analytics Page**: Update Recharts `formatter` types to handle `undefined` and correct the `label` prop types.
+2.  **History Page**:
+    *   Fix `AutoSizer` import (use named import).
+    *   Add explicit types for `AutoSizer` render props.
+    *   `VariableSizeList` should work with named import; I will double-check the import syntax.
+3.  **Global Search**: Ensure the Dexie `.filter()` callback returns a strict boolean.
 
-3.  **Optimization (Virtualization)**:
-    *   Install `react-window` and `react-virtualized-auto-sizer` to handle long lists efficiently.
-    *   Refactor `app/(dashboard)/history/page.tsx` to use `VariableSizeList` for rendering the expense list. This ensures the app remains performant even with thousands of transactions.
+### Modifications
 
-4.  **Update Task List**: Mark Phase 4 tasks as complete.
-</reasoning>
-
-<commands>
-<![CDATA[
-npm install -D vitest
-npm install react-window react-virtualized-auto-sizer @types/react-window @types/react-virtualized-auto-sizer
-]]>
-</commands>
+#### 1. Fix Analytics Page Types
 
 <modifications>
-    <file path="package.json">
-        <![CDATA[
-{
-  "name": "expense",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev --webpack",
-    "build": "next build --webpack",
-    "start": "next start",
-    "ts-check": "npx tsc --noEmit --skipLibCheck",
-    "lint": "next lint",
-    "test": "vitest run"
-  },
-  "dependencies": {
-    "@ducanh2912/next-pwa": "^10.2.9",
-    "@radix-ui/react-slot": "^1.2.4",
-    "@supabase/ssr": "^0.8.0",
-    "@supabase/supabase-js": "^2.91.0",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "date-fns": "^4.1.0",
-    "dexie": "^4.2.1",
-    "dexie-react-hooks": "^4.2.0",
-    "framer-motion": "^12.27.5",
-    "lucide-react": "^0.562.0",
-    "next": "16.1.4",
-    "next-themes": "^0.4.6",
-    "papaparse": "^5.5.3",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "react-virtualized-auto-sizer": "^1.0.25",
-    "react-window": "^1.8.11",
-    "recharts": "^3.6.0",
-    "tailwind-merge": "^3.4.0",
-    "uuid": "^13.0.0"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^25",
-    "@types/papaparse": "^5.5.2",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "@types/react-window": "^1.8.8",
-    "@types/react-virtualized-auto-sizer": "^1.0.4",
-    "@types/uuid": "^11.0.0",
-    "eslint": "^9",
-    "eslint-config-next": "16.1.4",
-    "tailwindcss": "^4",
-    "tw-animate-css": "^1.4.0",
-    "typescript": "^5",
-    "vitest": "^3.0.0"
-  }
-}
-        ]]>
-    </file>
-
-    <file path="lib/utils/finance.ts">
-        <![CDATA[
-import { Account, Expense, Transfer, Category } from '@/lib/db/db';
-
-/**
- * Calculates the current balance of an account based on initial balance,
- * expenses (income/expense), and transfers.
- */
-export function calculateAccountBalance(
-    account: Account,
-    expenses: Expense[],
-    transfersIn: Transfer[],
-    transfersOut: Transfer[],
-    categories: Category[]
-): number {
-    let balance = account.balance;
-
-    // Process Expenses & Income
-    for (const expense of expenses) {
-        // Skip if deleted
-        if (expense.deleted_at) continue;
-        
-        // Skip if not for this account
-        if (expense.account_id !== account.id) continue;
-
-        const category = categories.find(c => c.id === expense.category_id);
-        
-        // If category is income (or implicit income type), add amount
-        // Note: Database schema might just rely on category type. 
-        // We assume 'income' type adds, 'expense' type subtracts.
-        if (category?.type === 'income') {
-            balance += expense.amount;
-        } else {
-            // Default to expense
-            balance -= expense.amount;
-        }
-    }
-
-    // Process Transfers OUT (Subtract)
-    for (const t of transfersOut) {
-        if (t.deleted_at) continue;
-        if (t.from_account_id === account.id) {
-            balance -= t.amount;
-        }
-    }
-
-    // Process Transfers IN (Add)
-    for (const t of transfersIn) {
-        if (t.deleted_at) continue;
-        if (t.to_account_id === account.id) {
-            balance += t.amount;
-        }
-    }
-
-    return balance;
-}
-        ]]>
-    </file>
-
-    <file path="lib/utils/finance.test.ts">
-        <![CDATA[
-import { describe, it, expect } from 'vitest';
-import { calculateAccountBalance } from './finance';
-import { Account, Expense, Transfer, Category } from '@/lib/db/db';
-
-describe('calculateAccountBalance', () => {
-    // Mock Data Helpers
-    const mockAccount: Account = {
-        id: 'acc1',
-        user_id: 'u1',
-        name: 'Test Bank',
-        type: 'bank',
-        balance: 1000, // Initial
-        currency: 'USD',
-        created_at: '',
-        updated_at: '',
-        sync_status: 'synced'
-    };
-
-    const mockCategoryExpense: Category = {
-        id: 'cat_exp',
-        user_id: 'u1',
-        name: 'Food',
-        icon: 'food',
-        type: 'expense',
-        is_default: false,
-        sync_status: 'synced'
-    };
-
-    const mockCategoryIncome: Category = {
-        id: 'cat_inc',
-        user_id: 'u1',
-        name: 'Salary',
-        icon: 'money',
-        type: 'income',
-        is_default: false,
-        sync_status: 'synced'
-    };
-
-    it('should return initial balance if no transactions', () => {
-        const balance = calculateAccountBalance(mockAccount, [], [], [], [mockCategoryExpense]);
-        expect(balance).toBe(1000);
-    });
-
-    it('should subtract expenses', () => {
-        const expenses: Expense[] = [
-            { id: 'e1', user_id: 'u1', account_id: 'acc1', category_id: 'cat_exp', amount: 50, date: '', created_at: '', updated_at: '', sync_status: 'synced' }
-        ];
-        const balance = calculateAccountBalance(mockAccount, expenses, [], [], [mockCategoryExpense]);
-        expect(balance).toBe(950);
-    });
-
-    it('should add income', () => {
-        const expenses: Expense[] = [
-            { id: 'e2', user_id: 'u1', account_id: 'acc1', category_id: 'cat_inc', amount: 200, date: '', created_at: '', updated_at: '', sync_status: 'synced' }
-        ];
-        const balance = calculateAccountBalance(mockAccount, expenses, [], [], [mockCategoryIncome]);
-        expect(balance).toBe(1200);
-    });
-
-    it('should ignore deleted expenses', () => {
-        const expenses: Expense[] = [
-            { id: 'e3', user_id: 'u1', account_id: 'acc1', category_id: 'cat_exp', amount: 100, date: '', created_at: '', updated_at: '', sync_status: 'synced', deleted_at: '2023-01-01' }
-        ];
-        const balance = calculateAccountBalance(mockAccount, expenses, [], [], [mockCategoryExpense]);
-        expect(balance).toBe(1000);
-    });
-
-    it('should handle transfers out', () => {
-        const transfersOut: Transfer[] = [
-            { id: 't1', user_id: 'u1', from_account_id: 'acc1', to_account_id: 'acc2', amount: 300, date: '', created_at: '', updated_at: '', sync_status: 'synced' }
-        ];
-        const balance = calculateAccountBalance(mockAccount, [], [], transfersOut, []);
-        expect(balance).toBe(700);
-    });
-
-    it('should handle transfers in', () => {
-        const transfersIn: Transfer[] = [
-            { id: 't2', user_id: 'u1', from_account_id: 'acc2', to_account_id: 'acc1', amount: 150, date: '', created_at: '', updated_at: '', sync_status: 'synced' }
-        ];
-        const balance = calculateAccountBalance(mockAccount, [], transfersIn, [], []);
-        expect(balance).toBe(1150);
-    });
-
-    it('should calculate mixed transactions correctly', () => {
-        // Initial: 1000
-        // - 50 Expense
-        // + 200 Income
-        // - 300 Transfer Out
-        // + 150 Transfer In
-        // Total should be: 1000 - 50 + 200 - 300 + 150 = 1000
-        
-        const expenses: Expense[] = [
-            { id: 'e1', user_id: 'u1', account_id: 'acc1', category_id: 'cat_exp', amount: 50, date: '', created_at: '', updated_at: '', sync_status: 'synced' },
-            { id: 'e2', user_id: 'u1', account_id: 'acc1', category_id: 'cat_inc', amount: 200, date: '', created_at: '', updated_at: '', sync_status: 'synced' }
-        ];
-        
-        const transfersOut: Transfer[] = [
-            { id: 't1', user_id: 'u1', from_account_id: 'acc1', to_account_id: 'acc2', amount: 300, date: '', created_at: '', updated_at: '', sync_status: 'synced' }
-        ];
-
-        const transfersIn: Transfer[] = [
-            { id: 't2', user_id: 'u1', from_account_id: 'acc2', to_account_id: 'acc1', amount: 150, date: '', created_at: '', updated_at: '', sync_status: 'synced' }
-        ];
-
-        const balance = calculateAccountBalance(mockAccount, expenses, transfersIn, transfersOut, [mockCategoryExpense, mockCategoryIncome]);
-        expect(balance).toBe(1000);
-    });
-});
-        ]]>
-    </file>
-
-    <file path="components/features/accounts/AccountCard.tsx">
-        <![CDATA[
+<file path="app/(dashboard)/analytics/page.tsx">
+<![CDATA[
 'use client';
 
+import { useState } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, Account } from '@/lib/db/db';
+import { db } from '@/lib/db/db';
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { motion } from 'framer-motion';
+import { Button } from '@/components/ui/button';
+import { useBudgets } from '@/lib/hooks/use-budgets';
+import { AlertCircle, TrendingUp, TrendingDown, PiggyBank, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { formatCurrency, getCurrency } from '@/lib/utils/currency';
-import { Wallet, CreditCard, Landmark } from 'lucide-react';
-import { calculateAccountBalance } from '@/lib/utils/finance';
 
-interface AccountCardProps {
-    account: Account;
-}
+const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ff6b6b', '#4ecdc4'];
 
-export function AccountCard({ account }: AccountCardProps) {
+export default function AnalyticsPage() {
+    const expenses = useLiveQuery(() => db.expenses.filter(e => !e.deleted_at).toArray());
+    const categories = useLiveQuery(() => db.categories.toArray());
+    const { budgetStatuses } = useBudgets();
+    const subcategories = useLiveQuery(() => db.subcategories.toArray());
+    const [insight, setInsight] = useState('');
+    const [loadingInsight, setLoadingInsight] = useState(false);
+    const [selectedCategory, setSelectedCategory] = useState<{ id: string, name: string } | null>(null);
     const currency = getCurrency();
 
-    const currentBalance = useLiveQuery(async () => {
-        // 1. Fetch expenses (income and expense) for this account
-        const expenses = await db.expenses
-            .where('account_id')
-            .equals(account.id)
-            .toArray();
-        
-        // 2. Fetch transfers where this account is the SENDER
-        const transfersOut = await db.transfers
-            .where('from_account_id')
-            .equals(account.id)
-            .toArray();
+    // View state
+    const [viewType, setViewType] = useState<'expense' | 'income'>('expense');
 
-        // 3. Fetch transfers where this account is the RECEIVER
-        const transfersIn = await db.transfers
-            .where('to_account_id')
-            .equals(account.id)
-            .toArray();
+    // Date filtering state
+    const [filterMode, setFilterMode] = useState<'month' | 'range'>('month');
+    const [selectedMonth, setSelectedMonth] = useState(() => {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    });
+    const [customRange, setCustomRange] = useState({
+        start: new Date().toISOString().split('T')[0],
+        end: new Date().toISOString().split('T')[0]
+    });
 
-        const categories = await db.categories.toArray();
-        
-        return calculateAccountBalance(account, expenses, transfersIn, transfersOut, categories);
-    }, [account.id, account.balance]);
+    if (!expenses || !categories || !subcategories) return <div className="p-6">Loading...</div>;
 
-    const getIcon = () => {
-        switch (account.type) {
-            case 'bank': return Landmark;
-            case 'credit': return CreditCard;
-            default: return Wallet;
+    // 1. Filter expenses based on date selection
+    const filteredTransactions = expenses.filter(expense => {
+        const expenseDate = new Date(expense.date);
+
+        if (filterMode === 'month') {
+            const [year, month] = selectedMonth.split('-').map(Number);
+            return expenseDate.getFullYear() === year && expenseDate.getMonth() === month - 1;
+        } else {
+            const start = new Date(customRange.start);
+            const end = new Date(customRange.end);
+            end.setHours(23, 59, 59, 999);
+            return expenseDate >= start && expenseDate <= end;
+        }
+    });
+
+    // 2. Separate Income and Expenses
+    const incomeTransactions = filteredTransactions.filter(t => {
+        const cat = categories.find(c => c.id === t.category_id);
+        return cat?.type === 'income';
+    });
+
+    const expenseTransactions = filteredTransactions.filter(t => {
+        const cat = categories.find(c => c.id === t.category_id);
+        // Default to expense if type is missing or explicitly expense
+        return !cat || cat.type === 'expense';
+    });
+
+    // 3. Calculate Totals
+    const totalIncome = incomeTransactions.reduce((sum, t) => sum + t.amount, 0);
+    const totalExpense = expenseTransactions.reduce((sum, t) => sum + t.amount, 0);
+    const netSavings = totalIncome - totalExpense;
+    const savingsRate = totalIncome > 0 ? (netSavings / totalIncome) * 100 : 0;
+
+    // 4. Select data for charts based on viewType
+    const currentTransactions = viewType === 'expense' ? expenseTransactions : incomeTransactions;
+
+    // Budget Calculations (Only relevant for expenses)
+    const spendingByCategory = expenseTransactions.reduce((acc, curr) => {
+        const catId = curr.category_id;
+        acc[catId] = (acc[catId] || 0) + curr.amount;
+        return acc;
+    }, {} as Record<string, number>);
+
+    const currentViewBudgetStatuses = budgetStatuses.map(b => ({
+        ...b,
+        spent: spendingByCategory[b.categoryId] || 0,
+        remaining: b.budgetAmount - (spendingByCategory[b.categoryId] || 0)
+    }));
+
+    const exceededBudgets = currentViewBudgetStatuses.filter(b => b.remaining < 0);
+
+    // Map categories
+    const categoryMap = categories.reduce((acc, cat) => {
+        acc[cat.id] = cat.name;
+        return acc;
+    }, {} as Record<string, string>);
+
+    // Group by category for Pie Chart
+    const byCategory = currentTransactions.reduce((acc, curr) => {
+        const catId = curr.category_id;
+        acc[catId] = (acc[catId] || 0) + curr.amount;
+        return acc;
+    }, {} as Record<string, number>);
+
+    const pieData = Object.entries(byCategory)
+        .map(([id, value]) => ({
+            id,
+            name: categoryMap[id] || 'Unknown',
+            value
+        }))
+        .sort((a, b) => b.value - a.value);
+
+    // Group by Subcategory for Bar Chart
+    const subcategoryMap = subcategories?.reduce((acc, sub) => {
+        acc[sub.id] = sub.name;
+        return acc;
+    }, {} as Record<string, string>) || {};
+
+    const bySubcategory = currentTransactions.reduce((acc, curr) => {
+        if (selectedCategory && curr.category_id !== selectedCategory.id) return acc;
+
+        if (curr.items && curr.items.length > 0) {
+            curr.items.forEach(item => {
+                if (item.subcategory_id) {
+                    const subName = subcategoryMap[item.subcategory_id] || 'Unknown';
+                    acc[subName] = (acc[subName] || 0) + item.amount;
+                }
+            });
+        }
+        return acc;
+    }, {} as Record<string, number>);
+
+    const subcategoryData = Object.entries(bySubcategory)
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 10);
+
+    const handleAudit = async () => {
+        setLoadingInsight(true);
+        try {
+            const res = await fetch('/api/ai/insights', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ expenses: expenseTransactions?.slice(0, 50) }),
+            });
+            const data = await res.json();
+            setInsight(data.insight);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoadingInsight(false);
         }
     };
 
-    const Icon = getIcon();
-
     return (
-        <div className="p-4 bg-card rounded-2xl border border-border flex items-center justify-between">
-            <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-                    <Icon className="w-5 h-5" />
-                </div>
+        <div className="p-6 space-y-8 pb-24">
+            {/* Header Controls */}
+            <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
                 <div>
-                    <h3 className="font-medium">{account.name}</h3>
-                    <p className="text-xs text-muted-foreground capitalize">{account.type}</p>
+                    <h1 className="text-3xl font-bold">Analytics</h1>
+                    <p className="text-muted-foreground text-sm">
+                        {filterMode === 'month'
+                            ? `Report for ${new Date(selectedMonth).toLocaleDateString('default', { month: 'long', year: 'numeric' })}`
+                            : 'Report for selected range'}
+                    </p>
                 </div>
-            </div>
-            <div className="text-right">
-                <p className="font-bold">{formatCurrency(currentBalance ?? account.balance, currency)}</p>
-            </div>
-        </div>
-    );
-}
-        ]]>
-    </file>
 
-    <file path="components/features/search/GlobalSearch.tsx">
-        <![CDATA[
-'use client';
-
-import { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Search, X, Calendar, DollarSign } from 'lucide-react';
-import { db, Expense } from '@/lib/db/db';
-import { format } from 'date-fns';
-import { formatCurrency, getCurrency } from '@/lib/utils/currency';
-import { ExpenseDetailsModal } from '@/components/features/expenses/ExpenseDetailsModal';
-import { getIconComponent } from '@/lib/utils/icons';
-
-export function GlobalSearch({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-    const [query, setQuery] = useState('');
-    const [results, setResults] = useState<Expense[]>([]);
-    const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
-    const [categories, setCategories] = useState<any[]>([]);
-    const currency = getCurrency();
-
-    useEffect(() => {
-        // Load categories for displaying icons/names
-        db.categories.toArray().then(setCategories);
-    }, []);
-
-    useEffect(() => {
-        if (!query.trim()) {
-            setResults([]);
-            return;
-        }
-
-        const search = async () => {
-            const lowerQuery = query.toLowerCase();
-            // Perform search across expenses
-            // Note: Dexie `filter` is full scan, but acceptable for client-side valid datasets (thousands)
-            // For large datasets, a dedicated search index (e.g. FlexSearch) would be better, but this suffices for "Polish".
-            const matches = await db.expenses
-                .filter(e => !e.deleted_at && (
-                    (e.note && e.note.toLowerCase().includes(lowerQuery)) ||
-                    (e.amount.toString().includes(lowerQuery)) ||
-                    (e.items && e.items.some(i => i.description.toLowerCase().includes(lowerQuery)))
-                ))
-                .limit(20)
-                .toArray();
-            
-            setResults(matches);
-        };
-
-        const timer = setTimeout(search, 300);
-        return () => clearTimeout(timer);
-    }, [query]);
-
-    const getCategory = (id: string) => categories.find(c => c.id === id);
-
-    if (!isOpen) return null;
-
-    return (
-        <AnimatePresence>
-            <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm p-4 flex items-start justify-center pt-20"
-                onClick={onClose}
-            >
-                <motion.div
-                    initial={{ scale: 0.95, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0.95, opacity: 0 }}
-                    className="bg-card w-full max-w-2xl rounded-2xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[70vh]"
-                    onClick={e => e.stopPropagation()}
-                >
-                    <div className="p-4 border-b border-border flex items-center gap-3">
-                        <Search className="w-5 h-5 text-muted-foreground" />
-                        <input
-                            autoFocus
-                            value={query}
-                            onChange={e => setQuery(e.target.value)}
-                            placeholder="Search expenses, amounts, or items..."
-                            className="flex-1 bg-transparent outline-none text-lg placeholder:text-muted-foreground"
-                        />
-                        <button onClick={onClose} className="p-1 hover:bg-secondary rounded-full">
-                            <X className="w-5 h-5" />
+                <div className="flex flex-wrap items-center gap-3 bg-card p-2 rounded-xl border border-border shadow-sm">
+                    {/* Date Filter Toggle */}
+                    <div className="flex bg-muted rounded-lg p-1">
+                        <button
+                            onClick={() => setFilterMode('month')}
+                            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${filterMode === 'month' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            Month
+                        </button>
+                        <button
+                            onClick={() => setFilterMode('range')}
+                            className={`px-3 py-1.5 text-sm font-medium rounded-md transition-all ${filterMode === 'range' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                        >
+                            Range
                         </button>
                     </div>
 
-                    <div className="overflow-y-auto p-2">
-                        {results.length === 0 ? (
-                            <div className="py-8 text-center text-muted-foreground">
-                                {query ? 'No results found.' : 'Type to search...'}
+                    {filterMode === 'month' ? (
+                        <input
+                            type="month"
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(e.target.value)}
+                            className="bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                        />
+                    ) : (
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="date"
+                                value={customRange.start}
+                                onChange={(e) => setCustomRange(prev => ({ ...prev, start: e.target.value }))}
+                                className="bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                            />
+                            <span className="text-muted-foreground">-</span>
+                            <input
+                                type="date"
+                                value={customRange.end}
+                                onChange={(e) => setCustomRange(prev => ({ ...prev, end: e.target.value }))}
+                                className="bg-background border border-border rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+                            />
+                        </div>
+                    )}
+
+                    <div className="w-px h-6 bg-border mx-1" />
+
+                    <Button onClick={handleAudit} disabled={loadingInsight} size="sm" variant="outline">
+                        {loadingInsight ? 'Analyzing...' : 'AI Audit'}
+                    </Button>
+                </div>
+            </div>
+
+            {/* Financial Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="p-5 bg-card rounded-2xl border border-border shadow-sm">
+                    <div className="flex items-center gap-3 text-muted-foreground mb-1">
+                        <div className="p-2 bg-green-500/10 rounded-lg text-green-500"><ArrowUpRight className="w-4 h-4" /></div>
+                        <span className="text-sm font-medium">Total Income</span>
+                    </div>
+                    <p className="text-2xl font-bold">{formatCurrency(totalIncome, currency)}</p>
+                </motion.div>
+                
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="p-5 bg-card rounded-2xl border border-border shadow-sm">
+                    <div className="flex items-center gap-3 text-muted-foreground mb-1">
+                        <div className="p-2 bg-red-500/10 rounded-lg text-red-500"><ArrowDownLeft className="w-4 h-4" /></div>
+                        <span className="text-sm font-medium">Total Expenses</span>
+                    </div>
+                    <p className="text-2xl font-bold">{formatCurrency(totalExpense, currency)}</p>
+                </motion.div>
+
+                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="p-5 bg-card rounded-2xl border border-border shadow-sm relative overflow-hidden">
+                    <div className="relative z-10">
+                        <div className="flex items-center gap-3 text-muted-foreground mb-1">
+                            <div className="p-2 bg-blue-500/10 rounded-lg text-blue-500"><PiggyBank className="w-4 h-4" /></div>
+                            <span className="text-sm font-medium">Savings Rate</span>
+                        </div>
+                        <div className="flex items-end gap-2">
+                            <p className={`text-2xl font-bold ${savingsRate >= 20 ? 'text-green-500' : savingsRate > 0 ? 'text-blue-500' : 'text-red-500'}`}>
+                                {savingsRate.toFixed(1)}%
+                            </p>
+                            <p className="text-sm text-muted-foreground mb-1">({formatCurrency(netSavings, currency)})</p>
+                        </div>
+                    </div>
+                    {/* Progress Ring Background Concept */}
+                    <svg className="absolute -right-4 -bottom-4 w-24 h-24 text-primary/5 transform -rotate-90" viewBox="0 0 36 36">
+                        <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="currentColor" strokeWidth="4" strokeDasharray={`${Math.max(0, Math.min(100, savingsRate))}, 100`} />
+                    </svg>
+                </motion.div>
+            </div>
+
+            {/* AI Insight */}
+            {insight && (
+                <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-primary/10 p-4 rounded-xl text-primary border border-primary/20 flex gap-3"
+                >
+                    <TrendingUp className="w-5 h-5 mt-1 shrink-0" />
+                    <div>
+                        <h3 className="font-bold mb-1">AI Insight</h3>
+                        <p className="text-sm">{insight}</p>
+                    </div>
+                </motion.div>
+            )}
+
+            {/* Budget Exceeded Warning (Only visible when viewing Expenses) */}
+            {viewType === 'expense' && exceededBudgets.length > 0 && (
+                <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-red-50 dark:bg-red-950 p-4 rounded-xl text-red-800 dark:text-red-200 border border-red-200 dark:border-red-800 flex items-start gap-3"
+                >
+                    <AlertCircle className="w-5 h-5 mt-0.5 shrink-0" />
+                    <div>
+                        <h3 className="font-bold mb-1">Budget Alert</h3>
+                        <p className="text-sm">
+                            You've exceeded {exceededBudgets.length} budget{exceededBudgets.length > 1 ? 's' : ''}:
+                            {' '}{exceededBudgets.map(b => b.categoryName).join(', ')}
+                        </p>
+                    </div>
+                </motion.div>
+            )}
+
+            {/* Main Charts Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                
+                {/* Category Breakdown (Pie) */}
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="bg-card p-6 rounded-3xl shadow-sm border border-border flex flex-col"
+                >
+                    <div className="flex items-center justify-between mb-6">
+                        <h2 className="text-lg font-semibold">Breakdown</h2>
+                        {/* Toggle for Chart */}
+                        <div className="flex bg-secondary rounded-lg p-1">
+                            <button
+                                onClick={() => { setViewType('expense'); setSelectedCategory(null); }}
+                                className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${viewType === 'expense' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                            >
+                                Expenses
+                            </button>
+                            <button
+                                onClick={() => { setViewType('income'); setSelectedCategory(null); }}
+                                className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${viewType === 'income' ? 'bg-background shadow text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                            >
+                                Income
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="h-64 relative">
+                        {pieData.length === 0 ? (
+                            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm">
+                                No {viewType} data for this period
                             </div>
                         ) : (
-                            <div className="space-y-1">
-                                {results.map(expense => {
-                                    const cat = getCategory(expense.category_id);
-                                    const Icon = cat ? getIconComponent(cat.icon) : DollarSign;
-                                    
-                                    return (
-                                        <button
-                                            key={expense.id}
-                                            onClick={() => setSelectedExpense(expense)}
-                                            className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-secondary/50 transition-colors text-left"
-                                        >
-                                            <div className={`p-2 rounded-lg ${cat?.color || 'bg-primary/10'}`}>
-                                                <Icon className="w-4 h-4" />
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="font-medium truncate">{expense.note || cat?.name || 'Expense'}</div>
-                                                <div className="text-xs text-muted-foreground flex items-center gap-2">
-                                                    <span className="flex items-center gap-1">
-                                                        <Calendar className="w-3 h-3" />
-                                                        {format(new Date(expense.date), 'MMM d, yyyy')}
-                                                    </span>
-                                                    {expense.items && expense.items.length > 0 && (
-                                                        <span>• {expense.items.length} items</span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                            <div className="font-bold">
-                                                {formatCurrency(expense.amount, currency)}
-                                            </div>
-                                        </button>
-                                    );
-                                })}
+                            <ResponsiveContainer width="100%" height="100%">
+                                <PieChart>
+                                    <Pie
+                                        data={pieData}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={60}
+                                        outerRadius={80}
+                                        fill="#8884d8"
+                                        paddingAngle={5}
+                                        dataKey="value"
+                                        onClick={(data) => {
+                                            if (selectedCategory?.id === data.id) {
+                                                setSelectedCategory(null);
+                                            } else {
+                                                setSelectedCategory({ id: data.id, name: data.name });
+                                            }
+                                        }}
+                                        className="cursor-pointer focus:outline-none"
+                                    >
+                                        {pieData.map((entry, index) => (
+                                            <Cell
+                                                key={`cell-${index}`}
+                                                fill={COLORS[index % COLORS.length]}
+                                                stroke={selectedCategory?.id === entry.id ? 'var(--foreground)' : 'none'}
+                                                strokeWidth={2}
+                                            />
+                                        ))}
+                                    </Pie>
+                                    <Tooltip 
+                                        formatter={(value: any) => formatCurrency(Number(value) || 0, currency)} 
+                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                                    />
+                                    <Legend verticalAlign="bottom" height={36} iconType="circle" />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        )}
+                        {/* Center Text */}
+                        {pieData.length > 0 && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                                <span className="text-xs text-muted-foreground uppercase tracking-wider">{viewType}</span>
+                                <span className="text-xl font-bold">
+                                    {formatCurrency(viewType === 'expense' ? totalExpense : totalIncome, currency)}
+                                </span>
                             </div>
                         )}
                     </div>
                 </motion.div>
-            </motion.div>
 
-            {selectedExpense && (
-                <ExpenseDetailsModal
-                    expense={selectedExpense}
-                    onClose={() => setSelectedExpense(null)}
-                    getCategoryById={(id) => categories.find(c => c.id === id)}
-                />
-            )}
-        </AnimatePresence>
-    );
-}
-        ]]>
-    </file>
-
-    <file path="app/(dashboard)/layout.tsx">
-        <![CDATA[
-'use client';
-
-import { useState, useEffect } from 'react';
-import { BottomNav } from '@/components/features/layout/BottomNav';
-import { SideNav } from '@/components/features/layout/SideNav';
-import { ManualSyncButton } from '@/components/features/sync/ManualSyncButton';
-import AuthGuard from '@/components/auth/AuthGuard';
-import { GlobalSearch } from '@/components/features/search/GlobalSearch';
-import { Button } from '@/components/ui/button';
-import { Search } from 'lucide-react';
-
-export default function DashboardLayout({
-    children,
-}: {
-    children: React.ReactNode;
-}) {
-    const [isSearchOpen, setIsSearchOpen] = useState(false);
-
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-                e.preventDefault();
-                setIsSearchOpen(true);
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, []);
-
-    return (
-        <AuthGuard>
-            <div className="flex min-h-screen bg-background">
-                {/* Desktop Side Nav */}
-                <SideNav />
-
-                <div className="flex-1 flex flex-col md:pl-64 transition-all duration-300 min-w-0">
-                    {/* Header Bar */}
-                    <div className="fixed top-0 right-0 left-0 md:left-64 z-40 p-4 flex justify-end gap-2 pointer-events-none">
-                        <div className="pointer-events-auto flex items-center gap-2">
-                            <Button 
-                                variant="outline" 
-                                size="sm" 
-                                className="h-8 gap-2 bg-background/80 backdrop-blur-md hidden sm:flex"
-                                onClick={() => setIsSearchOpen(true)}
-                            >
-                                <Search className="w-3.5 h-3.5" />
-                                <span className="text-muted-foreground">Search...</span>
-                                <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground opacity-100">
-                                    <span className="text-xs">⌘</span>K
-                                </kbd>
-                            </Button>
-                            
-                            {/* Mobile Search Icon */}
-                            <Button 
-                                variant="secondary" 
-                                size="icon" 
-                                className="h-8 w-8 rounded-full sm:hidden pointer-events-auto shadow-md"
-                                onClick={() => setIsSearchOpen(true)}
-                            >
-                                <Search className="w-4 h-4" />
-                            </Button>
-
-                            <ManualSyncButton />
-                        </div>
+                {/* Subcategory / Drilldown Chart */}
+                <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.1 }}
+                    className="bg-card p-6 rounded-3xl shadow-sm border border-border"
+                >
+                    <h2 className="text-lg font-semibold mb-6">
+                        {selectedCategory ? `${selectedCategory.name} Details` : `Top ${viewType === 'expense' ? 'Spending' : 'Sources'} Details`}
+                    </h2>
+                    <div className="h-64">
+                        {subcategoryData.length === 0 ? (
+                            <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                                No subcategory data available
+                            </div>
+                        ) : (
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={subcategoryData} layout="vertical" margin={{ left: 10, right: 30 }}>
+                                    <XAxis type="number" hide />
+                                    <YAxis 
+                                        dataKey="name" 
+                                        type="category" 
+                                        width={100} 
+                                        tick={{ fontSize: 12 }} 
+                                        tickLine={false}
+                                        axisLine={false}
+                                    />
+                                    <Tooltip 
+                                        formatter={(value: any) => formatCurrency(Number(value) || 0, currency)}
+                                        cursor={{ fill: 'var(--muted)', opacity: 0.2 }}
+                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                                    />
+                                    <Bar 
+                                        dataKey="value" 
+                                        fill={viewType === 'expense' ? '#8884d8' : '#00C49F'} 
+                                        radius={[0, 4, 4, 0]} 
+                                        barSize={20}
+                                        label={{ 
+                                            position: 'right', 
+                                            formatter: (val: any) => formatCurrency(Number(val), currency), 
+                                            fontSize: 12, 
+                                            fill: 'var(--muted-foreground)' 
+                                        }} 
+                                    />
+                                </BarChart>
+                            </ResponsiveContainer>
+                        )}
                     </div>
+                </motion.div>
 
-                    <main className="flex-1 overflow-y-auto no-scrollbar pb-20 md:pb-0 pt-16 md:pt-0">
-                        {/* Wrapper to constrain width on ultra-wide screens */}
-                        <div className="max-w-7xl mx-auto w-full">
-                            {children}
+                {/* Budget Comparison (Only if Expenses) */}
+                {viewType === 'expense' && budgetStatuses.length > 0 && (
+                    <motion.div
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ delay: 0.2 }}
+                        className="bg-card p-6 rounded-3xl shadow-sm border border-border lg:col-span-2"
+                    >
+                        <h2 className="text-lg font-semibold mb-4">Budget vs Actual</h2>
+                        <div className="h-64">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={budgetStatuses.map(b => ({
+                                    name: b.categoryName,
+                                    Budget: b.budgetAmount,
+                                    Actual: b.spent,
+                                }))} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                                    <XAxis dataKey="name" tickLine={false} axisLine={false} />
+                                    <YAxis tickLine={false} axisLine={false} />
+                                    <Tooltip 
+                                        formatter={(value: any) => formatCurrency(Number(value) || 0, currency)}
+                                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                                    />
+                                    <Legend />
+                                    <Bar dataKey="Budget" fill="#e2e8f0" radius={[4, 4, 0, 0]} />
+                                    <Bar dataKey="Actual" fill="#8884d8" radius={[4, 4, 0, 0]} />
+                                </BarChart>
+                            </ResponsiveContainer>
                         </div>
-                    </main>
-
-                    {/* Mobile Bottom Nav */}
-                    <div className="md:hidden">
-                        <BottomNav />
-                    </div>
-                </div>
+                    </motion.div>
+                )}
             </div>
-            
-            <GlobalSearch isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
-        </AuthGuard>
+        </div>
     );
 }
-        ]]>
-    </file>
+]]>
+</file>
 
-    <file path="app/(dashboard)/history/page.tsx">
-        <![CDATA[
+<file path="app/(dashboard)/history/page.tsx">
+<![CDATA[
 'use client';
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, Expense } from '@/lib/db/db';
 import { useExpenseMutations } from '@/lib/hooks/use-expense-mutations';
 import { getIconComponent } from '@/lib/utils/icons';
-import { Search, X, Trash2, Calendar, DollarSign } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { Search } from 'lucide-react'; // X, Trash2, Calendar, DollarSign removed as they are used inside Row now
 import { format, parseISO, startOfMonth, endOfMonth, isWithinInterval, subMonths } from 'date-fns';
 import { formatCurrency, getCurrency } from '@/lib/utils/currency';
 import { ExpenseDetailsModal } from '@/components/features/expenses/ExpenseDetailsModal';
 import { VariableSizeList as List } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
+import { AutoSizer } from 'react-virtualized-auto-sizer'; // Fixed Import
+import { Trash2, Calendar, DollarSign } from 'lucide-react'; // Re-adding for Row component usage
 
 export default function HistoryPage() {
     const expenses = useLiveQuery(() => db.expenses.orderBy('date').filter(e => !e.deleted_at).reverse().toArray());
@@ -748,7 +664,7 @@ export default function HistoryPage() {
                     </div>
                 ) : (
                     <AutoSizer>
-                        {({ height, width }) => (
+                        {({ height, width }: { height: number; width: number }) => (
                             <List
                                 height={height}
                                 itemCount={filteredExpenses.length}
@@ -775,21 +691,148 @@ export default function HistoryPage() {
         </div>
     );
 }
-        ]]>
-    </file>
+]]>
+</file>
 
-    <file path="TASKS.md">
-        <![CDATA[
-- [x] Fix AI receipt scanning to handle discounts (OPUST/RABAT) by merging them into the item price instead of creating separate items.
-- [x] Create test user (dev@dev.dev / a) and seed initial data.
-- [x] Fix Recurring Expenses deletion issue (ensure soft-deleted items are filtered out in UI).
-- [x] Make Main Index Page Desktop Friendly (SideNav + Grid Layout).
-- [x] Implement Account Transfers (DB, Sync, UI, Balances).
-- [x] Refine Analytics (Split Income/Expense, Savings Rate).
-- [x] Implement Subcategory Management (Settings UI + Manual Selection in Add Expense).
-- [x] Implement Global Search (Command Palette).
-- [x] Optimize History Page (Virtualization).
-- [x] Add Unit Tests for Financial Logic.
-        ]]>
-    </file>
+<file path="components/features/search/GlobalSearch.tsx">
+<![CDATA[
+'use client';
+
+import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Search, X, Calendar, DollarSign } from 'lucide-react';
+import { db, Expense } from '@/lib/db/db';
+import { format } from 'date-fns';
+import { formatCurrency, getCurrency } from '@/lib/utils/currency';
+import { ExpenseDetailsModal } from '@/components/features/expenses/ExpenseDetailsModal';
+import { getIconComponent } from '@/lib/utils/icons';
+
+export function GlobalSearch({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
+    const [query, setQuery] = useState('');
+    const [results, setResults] = useState<Expense[]>([]);
+    const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
+    const [categories, setCategories] = useState<any[]>([]);
+    const currency = getCurrency();
+
+    useEffect(() => {
+        // Load categories for displaying icons/names
+        db.categories.toArray().then(setCategories);
+    }, []);
+
+    useEffect(() => {
+        if (!query.trim()) {
+            setResults([]);
+            return;
+        }
+
+        const search = async () => {
+            const lowerQuery = query.toLowerCase();
+            const matches = await db.expenses
+                .filter(e => {
+                    if (e.deleted_at) return false;
+                    const matchNote = !!(e.note && e.note.toLowerCase().includes(lowerQuery));
+                    const matchAmount = !!(e.amount.toString().includes(lowerQuery));
+                    const matchItems = !!(e.items && e.items.some(i => i.description.toLowerCase().includes(lowerQuery)));
+                    return matchNote || matchAmount || matchItems;
+                })
+                .limit(20)
+                .toArray();
+            
+            setResults(matches);
+        };
+
+        const timer = setTimeout(search, 300);
+        return () => clearTimeout(timer);
+    }, [query]);
+
+    const getCategory = (id: string) => categories.find(c => c.id === id);
+
+    if (!isOpen) return null;
+
+    return (
+        <AnimatePresence>
+            <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm p-4 flex items-start justify-center pt-20"
+                onClick={onClose}
+            >
+                <motion.div
+                    initial={{ scale: 0.95, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.95, opacity: 0 }}
+                    className="bg-card w-full max-w-2xl rounded-2xl shadow-2xl border border-border overflow-hidden flex flex-col max-h-[70vh]"
+                    onClick={e => e.stopPropagation()}
+                >
+                    <div className="p-4 border-b border-border flex items-center gap-3">
+                        <Search className="w-5 h-5 text-muted-foreground" />
+                        <input
+                            autoFocus
+                            value={query}
+                            onChange={e => setQuery(e.target.value)}
+                            placeholder="Search expenses, amounts, or items..."
+                            className="flex-1 bg-transparent outline-none text-lg placeholder:text-muted-foreground"
+                        />
+                        <button onClick={onClose} className="p-1 hover:bg-secondary rounded-full">
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+
+                    <div className="overflow-y-auto p-2">
+                        {results.length === 0 ? (
+                            <div className="py-8 text-center text-muted-foreground">
+                                {query ? 'No results found.' : 'Type to search...'}
+                            </div>
+                        ) : (
+                            <div className="space-y-1">
+                                {results.map(expense => {
+                                    const cat = getCategory(expense.category_id);
+                                    const Icon = cat ? getIconComponent(cat.icon) : DollarSign;
+                                    
+                                    return (
+                                        <button
+                                            key={expense.id}
+                                            onClick={() => setSelectedExpense(expense)}
+                                            className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-secondary/50 transition-colors text-left"
+                                        >
+                                            <div className={`p-2 rounded-lg ${cat?.color || 'bg-primary/10'}`}>
+                                                <Icon className="w-4 h-4" />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="font-medium truncate">{expense.note || cat?.name || 'Expense'}</div>
+                                                <div className="text-xs text-muted-foreground flex items-center gap-2">
+                                                    <span className="flex items-center gap-1">
+                                                        <Calendar className="w-3 h-3" />
+                                                        {format(new Date(expense.date), 'MMM d, yyyy')}
+                                                    </span>
+                                                    {expense.items && expense.items.length > 0 && (
+                                                        <span>• {expense.items.length} items</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <div className="font-bold">
+                                                {formatCurrency(expense.amount, currency)}
+                                            </div>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+                </motion.div>
+            </motion.div>
+
+            {selectedExpense && (
+                <ExpenseDetailsModal
+                    expense={selectedExpense}
+                    onClose={() => setSelectedExpense(null)}
+                    getCategoryById={(id) => categories.find(c => c.id === id)}
+                />
+            )}
+        </AnimatePresence>
+    );
+}
+]]>
+</file>
 </modifications>
